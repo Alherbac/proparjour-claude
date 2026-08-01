@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "proparjour-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/diallocherif/Proparjour claude", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}
