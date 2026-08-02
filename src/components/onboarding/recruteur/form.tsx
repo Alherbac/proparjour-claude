@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
-import { MapPin } from "lucide-react";
+import { MapPin, Loader2, MailCheck } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,13 +28,25 @@ import {
   type RecruteurFormValues,
 } from "@/components/onboarding/recruteur/schema";
 import { estVilleCouverte, MESSAGE_HORS_ZONE } from "@/config/zones-couverture";
+import { createClient } from "@/lib/supabase/client";
+import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
+import { completerProfilRecruteur } from "@/app/actions/inscription";
+
+const INSCRIPTION_PATH = "/inscription/recruteur";
 
 export function RecruteurForm() {
   const [submitted, setSubmitted] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [existingUser, setExistingUser] = useState<User | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
   const {
     register,
     control,
     handleSubmit,
+    setValue,
     setError,
     clearErrors,
     watch,
@@ -43,12 +56,26 @@ export function RecruteurForm() {
     defaultValues: RECRUTEUR_DEFAULT_VALUES,
   });
 
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setExistingUser(data.user);
+        setValue("email", data.user.email ?? "");
+      }
+      setCheckingSession(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
+
   const typeCompte = watch("typeCompte");
   const ville = watch("ville");
   const horsZone = Boolean(ville) && ville.trim().length > 2 && !estVilleCouverte(ville);
 
-  function onSubmit(data: RecruteurFormValues) {
+  async function onSubmit(data: RecruteurFormValues) {
     clearErrors(["raisonSociale", "siret", "secteurActivite"]);
+    setAuthError(null);
+
     if (data.typeCompte === "entreprise") {
       let hasError = false;
       if (!data.raisonSociale?.trim()) {
@@ -65,11 +92,70 @@ export function RecruteurForm() {
       }
       if (hasError) return;
     }
-    setSubmitted(true);
+
+    if (!existingUser && (!data.motDePasse || data.motDePasse.length < 8)) {
+      setError("motDePasse", { type: "manual", message: "8 caractères minimum" });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (!existingUser) {
+        const supabase = createClient();
+        const { data: signUpData, error } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.motDePasse!,
+        });
+        if (error) {
+          setAuthError(error.message);
+          return;
+        }
+        if (!signUpData.session) {
+          setAwaitingConfirmation(true);
+          return;
+        }
+      }
+
+      const result = await completerProfilRecruteur(data);
+      if (!result.success) {
+        setAuthError(result.error);
+        return;
+      }
+      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogleClick() {
+    const { error } = await signInWithGoogle(INSCRIPTION_PATH);
+    if (error) setAuthError(error.message);
   }
 
   if (submitted) {
     return <RecruteurSuccessScreen />;
+  }
+
+  if (awaitingConfirmation) {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center bg-secondary/30 px-4 py-16">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-background p-8 text-center shadow-sm">
+          <div className="mb-4 flex justify-center">
+            <Logo />
+          </div>
+          <span className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <MailCheck className="size-7" />
+          </span>
+          <h1 className="font-heading text-2xl font-semibold text-foreground">
+            Vérifiez votre e-mail
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Cliquez sur le lien reçu par e-mail pour confirmer votre compte,
+            puis reconnectez-vous pour terminer votre inscription.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -84,10 +170,12 @@ export function RecruteurForm() {
         <div className="rounded-2xl border border-border bg-background p-6 shadow-sm sm:p-8">
           <div className="mb-6">
             <h1 className="font-heading text-2xl font-semibold text-foreground">
-              Créer un compte recruteur
+              {existingUser ? "Complétez votre profil" : "Créer un compte recruteur"}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Réservez des prestataires qualifiés en quelques clics.
+              {existingUser
+                ? "Encore quelques informations pour activer votre compte."
+                : "Réservez des prestataires qualifiés en quelques clics."}
             </p>
           </div>
 
@@ -108,13 +196,19 @@ export function RecruteurForm() {
             )}
           />
 
-          <GoogleButton label="Continuer avec Google" />
-
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">ou avec e-mail</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
+          {!existingUser && !checkingSession && (
+            <>
+              <GoogleButton
+                label="Continuer avec Google"
+                onClick={handleGoogleClick}
+              />
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">ou avec e-mail</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {typeCompte === "entreprise" && (
@@ -186,7 +280,12 @@ export function RecruteurForm() {
             </div>
 
             <FormField label="E-mail" htmlFor="email" error={errors.email?.message}>
-              <Input id="email" type="email" {...register("email")} />
+              <Input
+                id="email"
+                type="email"
+                disabled={Boolean(existingUser)}
+                {...register("email")}
+              />
             </FormField>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -197,13 +296,15 @@ export function RecruteurForm() {
               >
                 <Input id="telephone" type="tel" {...register("telephone")} />
               </FormField>
-              <FormField
-                label="Mot de passe"
-                htmlFor="motDePasse"
-                error={errors.motDePasse?.message}
-              >
-                <Input id="motDePasse" type="password" {...register("motDePasse")} />
-              </FormField>
+              {!existingUser && (
+                <FormField
+                  label="Mot de passe"
+                  htmlFor="motDePasse"
+                  error={errors.motDePasse?.message}
+                >
+                  <Input id="motDePasse" type="password" {...register("motDePasse")} />
+                </FormField>
+              )}
             </div>
 
             <FormField label="Ville" htmlFor="ville" error={errors.ville?.message}>
@@ -243,8 +344,13 @@ export function RecruteurForm() {
               </p>
             ) : null}
 
-            <Button type="submit" className="w-full rounded-full">
-              Créer mon compte
+            {authError && (
+              <p className="text-sm font-medium text-destructive">{authError}</p>
+            )}
+
+            <Button type="submit" className="w-full rounded-full" disabled={submitting}>
+              {submitting && <Loader2 className="size-4 animate-spin" />}
+              {existingUser ? "Terminer mon inscription" : "Créer mon compte"}
             </Button>
           </form>
         </div>

@@ -26,6 +26,7 @@ export const prestataireSchema = z
       .string()
       .trim()
       .min(10, "Numéro de téléphone invalide"),
+    motDePasse: z.string().optional(),
     statutIndependant: z.enum(STATUT_INDEPENDANT_VALUES, {
       error: "Sélectionnez votre statut",
     }),

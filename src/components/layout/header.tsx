@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Bell, LayoutDashboard } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
-import { SearchBar } from "@/components/layout/search-bar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 
@@ -16,8 +15,6 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3 lg:px-8">
         <Logo />
-
-        <SearchBar className="hidden md:flex" />
 
         <nav className="ml-auto hidden items-center gap-6 lg:flex">
           {NAV_LINKS.map((link) => (
@@ -49,10 +46,6 @@ export function Header() {
             Tableau de bord
           </Button>
         </div>
-      </div>
-
-      <div className="border-t border-border px-4 py-3 md:hidden">
-        <SearchBar />
       </div>
     </header>
   );

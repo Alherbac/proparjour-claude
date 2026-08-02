@@ -9,12 +9,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Controller } from "react-hook-form";
+import { GoogleButton } from "@/components/onboarding/recruteur/google-button";
 import {
   STATUTS_INDEPENDANT,
   type PrestataireFormValues,
 } from "@/components/onboarding/prestataire/schema";
 
-export function StepCoordonnees() {
+export function StepCoordonnees({
+  existingUser,
+  onGoogleClick,
+}: {
+  existingUser: boolean;
+  onGoogleClick: () => void;
+}) {
   const {
     register,
     control,
@@ -32,6 +39,17 @@ export function StepCoordonnees() {
         </p>
       </div>
 
+      {!existingUser && (
+        <>
+          <GoogleButton label="Continuer avec Google" onClick={onGoogleClick} />
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">ou avec e-mail</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField label="Prénom" htmlFor="prenom" error={errors.prenom?.message}>
           <Input id="prenom" placeholder="Amadou" {...register("prenom")} />
@@ -46,22 +64,34 @@ export function StepCoordonnees() {
           id="email"
           type="email"
           placeholder="vous@exemple.com"
+          disabled={existingUser}
           {...register("email")}
         />
       </FormField>
 
-      <FormField
-        label="Téléphone"
-        htmlFor="telephone"
-        error={errors.telephone?.message}
-      >
-        <Input
-          id="telephone"
-          type="tel"
-          placeholder="06 12 34 56 78"
-          {...register("telephone")}
-        />
-      </FormField>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField
+          label="Téléphone"
+          htmlFor="telephone"
+          error={errors.telephone?.message}
+        >
+          <Input
+            id="telephone"
+            type="tel"
+            placeholder="06 12 34 56 78"
+            {...register("telephone")}
+          />
+        </FormField>
+        {!existingUser && (
+          <FormField
+            label="Mot de passe"
+            htmlFor="motDePasse"
+            error={errors.motDePasse?.message}
+          >
+            <Input id="motDePasse" type="password" {...register("motDePasse")} />
+          </FormField>
+        )}
+      </div>
 
       <FormField
         label="Statut indépendant"

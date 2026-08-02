@@ -23,9 +23,23 @@ function GoogleIcon() {
   );
 }
 
-export function GoogleButton({ label }: { label: string }) {
+export function GoogleButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <Button type="button" variant="outline" className="w-full rounded-full">
+    <Button
+      type="button"
+      variant="outline"
+      className="w-full rounded-full"
+      onClick={onClick}
+      disabled={disabled}
+    >
       <GoogleIcon />
       {label}
     </Button>

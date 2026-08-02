@@ -16,9 +16,7 @@ export const recruteurSchema = z
     nom: z.string().trim().min(1, "Le nom est requis"),
     email: z.string().trim().email("Adresse e-mail invalide"),
     telephone: z.string().trim().min(10, "Numéro de téléphone invalide"),
-    motDePasse: z
-      .string()
-      .min(8, "8 caractères minimum"),
+    motDePasse: z.string().optional(),
     ville: z.string().trim().min(1, "La ville est requise"),
 
     raisonSociale: z.string().trim().optional(),

@@ -70,27 +70,38 @@ export type Database = {
         Row: UsersRow;
         Insert: Partial<UsersRow> & { id: string };
         Update: Partial<UsersRow>;
+        Relationships: [];
       };
       entreprises: {
         Row: EntreprisesRow;
         Insert: Omit<EntreprisesRow, "id" | "created_at" | "updated_at"> &
           Partial<Pick<EntreprisesRow, "id">>;
         Update: Partial<EntreprisesRow>;
+        Relationships: [];
       };
       prestataires_profils: {
         Row: PrestatairesProfilsRow;
         Insert: Omit<
           PrestatairesProfilsRow,
-          "id" | "created_at" | "updated_at" | "statut_verification" | "motif_refus"
+          | "id"
+          | "created_at"
+          | "updated_at"
+          | "statut_verification"
+          | "motif_refus"
+          | "bio"
+          | "photo_url"
         > &
           Partial<
             Pick<
               PrestatairesProfilsRow,
-              "id" | "statut_verification" | "motif_refus"
+              "id" | "statut_verification" | "motif_refus" | "bio" | "photo_url"
             >
           >;
         Update: Partial<PrestatairesProfilsRow>;
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 };
