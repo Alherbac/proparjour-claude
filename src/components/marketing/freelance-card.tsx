@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { METIERS } from "@/config/metiers";
@@ -8,7 +9,10 @@ export function FreelanceCard({ freelance }: { freelance: FreelanceDemo }) {
   const metier = METIERS.find((m) => m.id === freelance.metier);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+    <Link
+      href={`/prestataires/${freelance.id}`}
+      className="block overflow-hidden rounded-2xl border border-border bg-background shadow-sm transition-shadow hover:shadow-md"
+    >
       <div
         className={cn(
           "flex aspect-4/3 items-center justify-center bg-gradient-to-br text-4xl font-heading font-semibold text-foreground/70",
@@ -27,6 +31,6 @@ export function FreelanceCard({ freelance }: { freelance: FreelanceDemo }) {
         </div>
         <p className="text-sm text-muted-foreground">{metier?.label}</p>
       </div>
-    </div>
+    </Link>
   );
 }

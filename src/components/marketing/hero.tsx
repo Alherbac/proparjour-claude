@@ -31,7 +31,7 @@ export function Hero() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button
-              render={<Link href="/recruter" />}
+              render={<Link href="/inscription/recruteur" />}
               size="lg"
               className="rounded-full"
             >

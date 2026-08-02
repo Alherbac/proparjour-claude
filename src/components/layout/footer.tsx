@@ -22,7 +22,7 @@ const FOOTER_COLUMNS = [
   {
     title: "Entreprises",
     links: [
-      { href: "/inscription/entreprise", label: "Recruter un prestataire" },
+      { href: "/inscription/recruteur", label: "Recruter un prestataire" },
       { href: "/entreprises", label: "Espace entreprise" },
     ],
   },
