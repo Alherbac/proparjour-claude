@@ -55,6 +55,13 @@ $$;
 
 -- SECURITY DEFINER pour éviter la récursion RLS quand une policy
 -- a besoin de vérifier si l'utilisateur courant est admin.
+--
+-- Compte aussi comme "admin" les requêtes effectuées avec la clé
+-- service_role (auth.role() = 'service_role') : ce client n'a pas
+-- d'auth.uid() (pas de session utilisateur), et sans cette clause il
+-- serait bloqué par les triggers prevent_self_* ci-dessous alors même
+-- que RLS le laisse déjà tout faire. BYPASSRLS s'applique aux policies
+-- mais pas aux triggers, d'où la nécessité de le gérer explicitement.
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -62,10 +69,12 @@ security definer
 set search_path = public
 stable
 as $$
-  select exists (
-    select 1 from public.users
-    where id = auth.uid() and type = 'admin'
-  );
+  select
+    auth.role() = 'service_role'
+    or exists (
+      select 1 from public.users
+      where id = auth.uid() and type = 'admin'
+    );
 $$;
 
 -- ============================================================
@@ -116,10 +125,33 @@ create policy "users_select_own_or_admin"
   on public.users for select
   using (auth.uid() = id or public.is_admin());
 
+-- L'utilisateur et l'admin peuvent tous deux modifier la ligne ; le
+-- trigger ci-dessous empêche un non-admin de changer sa propre colonne
+-- `type` (donc de s'auto-attribuer 'admin' ou tout autre rôle), même
+-- si la policy elle-même l'autoriserait.
 create policy "users_update_own_or_admin"
   on public.users for update
   using (auth.uid() = id or public.is_admin())
   with check (auth.uid() = id or public.is_admin());
+
+create or replace function public.prevent_self_type_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin()
+     and new.type is distinct from old.type then
+    raise exception 'Seul un administrateur peut modifier le type de compte.';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger users_guard_type
+  before update on public.users
+  for each row execute function public.prevent_self_type_change();
 
 -- Pas de policy INSERT/DELETE : la ligne est créée uniquement par le
 -- trigger handle_new_auth_user (security definer), jamais directement
