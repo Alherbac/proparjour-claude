@@ -1,6 +1,13 @@
 -- ProParJour — schéma initial (Étape 1 du cahier des charges)
 -- Tables : users, entreprises, prestataires_profils
 -- À exécuter dans l'éditeur SQL du dashboard Supabase (projet région UE).
+--
+-- Ordre des blocs important : une fonction LANGUAGE SQL (is_admin) est
+-- validée contre le catalogue dès sa création (contrairement à
+-- plpgsql, où le corps n'est vérifié qu'à la première exécution), donc
+-- toute table qu'elle référence doit déjà exister. D'où l'ordre :
+-- types -> fonction générique sans dépendance -> table users -> is_admin
+-- -> reste des fonctions/policies qui dépendent de is_admin.
 
 create extension if not exists pgcrypto;
 
@@ -39,7 +46,7 @@ create type public.statut_verification_type as enum (
 );
 
 -- ============================================================
--- Fonctions utilitaires
+-- Fonction générique, sans dépendance sur une table applicative
 -- ============================================================
 
 -- Maintient updated_at à jour sur chaque UPDATE.
@@ -52,6 +59,32 @@ begin
   return new;
 end;
 $$;
+
+-- ============================================================
+-- Table users — profil applicatif, en 1:1 avec auth.users
+-- ============================================================
+-- Créée avant is_admin() : cette fonction (LANGUAGE SQL) référence
+-- public.users et serait rejetée à la création si la table n'existait
+-- pas encore.
+
+create table public.users (
+  id uuid primary key references auth.users (id) on delete cascade,
+  type public.user_type,
+  prenom text,
+  nom text,
+  telephone text,
+  ville text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create trigger users_set_updated_at
+  before update on public.users
+  for each row execute function public.set_updated_at();
+
+-- ============================================================
+-- Fonctions utilitaires dépendant de public.users
+-- ============================================================
 
 -- SECURITY DEFINER pour éviter la récursion RLS quand une policy
 -- a besoin de vérifier si l'utilisateur courant est admin.
@@ -77,25 +110,6 @@ as $$
     );
 $$;
 
--- ============================================================
--- Table users — profil applicatif, en 1:1 avec auth.users
--- ============================================================
-
-create table public.users (
-  id uuid primary key references auth.users (id) on delete cascade,
-  type public.user_type,
-  prenom text,
-  nom text,
-  telephone text,
-  ville text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create trigger users_set_updated_at
-  before update on public.users
-  for each row execute function public.set_updated_at();
-
 -- Crée automatiquement une ligne public.users à chaque inscription
 -- (email/mot de passe ou OAuth Google) pour ne jamais avoir de compte
 -- auth.users orphelin. Le type reste NULL tant que l'onboarding
@@ -118,6 +132,10 @@ $$;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_auth_user();
+
+-- ============================================================
+-- RLS — table users
+-- ============================================================
 
 alter table public.users enable row level security;
 
