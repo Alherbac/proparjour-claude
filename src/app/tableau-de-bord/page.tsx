@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, MapPin, Phone, CalendarDays } from "lucide-react";
+import { Mail, MapPin, Phone, CalendarDays, FileDown } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,11 @@ import { signOutAction } from "@/app/actions/auth";
 import { METIERS } from "@/config/metiers";
 import { getMissionsRecruteur, getMissionsPrestataire } from "@/lib/missions";
 import { ReponseMissionButtons } from "@/components/missions/reponse-mission-buttons";
+import { AnnulerMissionButton } from "@/components/missions/annuler-mission-button";
 import { cn } from "@/lib/utils";
+
+const STATUTS_ANNULABLES = ["en_attente", "confirmee"];
+const STATUTS_FACTURABLES = ["sequestre", "libere"];
 
 export const metadata: Metadata = {
   title: "Tableau de bord — ProParJour",
@@ -214,6 +219,22 @@ export default async function TableauDeBordPage() {
                         Paiement : {mission.paiement?.statut === "sequestre" ? "séquestré" : mission.paiement?.statut}
                       </span>
                       <span className="font-semibold text-foreground">{mission.montant_total} €</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      {mission.paiement && STATUTS_FACTURABLES.includes(mission.paiement.statut) ? (
+                        <Link
+                          href={`/api/factures/${mission.id}`}
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                        >
+                          <FileDown className="size-3.5" />
+                          Télécharger la facture
+                        </Link>
+                      ) : (
+                        <span />
+                      )}
+                      {STATUTS_ANNULABLES.includes(mission.statut) && (
+                        <AnnulerMissionButton missionId={mission.id} />
+                      )}
                     </div>
                   </li>
                 ))}

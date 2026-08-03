@@ -10,9 +10,14 @@ export type LigneAvecPrestataire = MissionLignesRow & {
   nom: string | null;
 };
 
+export type PaiementResume = Pick<
+  PaiementsRow,
+  "statut" | "montant" | "taux_commission" | "montant_commission"
+>;
+
 export type MissionAvecLignes = MissionsRow & {
   lignes: LigneAvecPrestataire[];
-  paiement: Pick<PaiementsRow, "statut" | "montant"> | null;
+  paiement: PaiementResume | null;
 };
 
 export async function getMissionsRecruteur(
@@ -32,7 +37,10 @@ export async function getMissionsRecruteur(
 
   const [{ data: lignes }, { data: paiements }] = await Promise.all([
     supabase.from("mission_lignes").select("*").in("mission_id", missionIds),
-    supabase.from("paiements").select("mission_id, statut, montant").in("mission_id", missionIds),
+    supabase
+      .from("paiements")
+      .select("mission_id, statut, montant, taux_commission, montant_commission")
+      .in("mission_id", missionIds),
   ]);
 
   const prestataireIds = [...new Set((lignes ?? []).map((l) => l.prestataire_id))];
@@ -55,6 +63,53 @@ export async function getMissionsRecruteur(
         nom: parPrestataire.get(ligne.prestataire_id)?.nom ?? null,
       })),
   }));
+}
+
+/**
+ * Une seule mission, avec ses lignes et son paiement, pour la facture.
+ * S'appuie sur la RLS (client session, pas admin) : si l'appelant
+ * n'est pas le recruteur de cette mission, la requête renvoie
+ * naturellement null plutôt que de nécessiter une double vérification
+ * manuelle des droits.
+ */
+export async function getMissionPourFacture(
+  missionId: string,
+): Promise<MissionAvecLignes | null> {
+  const supabase = await createClient();
+
+  const { data: mission } = await supabase
+    .from("missions")
+    .select("*")
+    .eq("id", missionId)
+    .maybeSingle();
+
+  if (!mission) return null;
+
+  const [{ data: lignes }, { data: paiement }] = await Promise.all([
+    supabase.from("mission_lignes").select("*").eq("mission_id", missionId),
+    supabase
+      .from("paiements")
+      .select("statut, montant, taux_commission, montant_commission")
+      .eq("mission_id", missionId)
+      .maybeSingle(),
+  ]);
+
+  const prestataireIds = [...new Set((lignes ?? []).map((l) => l.prestataire_id))];
+  const { data: prestataires } =
+    prestataireIds.length > 0
+      ? await supabase.from("prestataires_publics").select("id, prenom, nom").in("id", prestataireIds)
+      : { data: [] as { id: string; prenom: string | null; nom: string | null }[] };
+  const parPrestataire = new Map((prestataires ?? []).map((p) => [p.id, p]));
+
+  return {
+    ...mission,
+    paiement: paiement ?? null,
+    lignes: (lignes ?? []).map((ligne) => ({
+      ...ligne,
+      prenom: parPrestataire.get(ligne.prestataire_id)?.prenom ?? null,
+      nom: parPrestataire.get(ligne.prestataire_id)?.nom ?? null,
+    })),
+  };
 }
 
 export type LigneProposee = MissionLignesRow & {
