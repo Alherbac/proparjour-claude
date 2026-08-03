@@ -127,6 +127,16 @@ export type MissionLignesRow = {
   updated_at: string;
 };
 
+export type MessagesRow = {
+  id: string;
+  mission_id: string;
+  expediteur_id: string;
+  destinataire_id: string;
+  contenu: string;
+  lu: boolean;
+  created_at: string;
+};
+
 export type PaiementsRow = {
   id: string;
   mission_id: string;
@@ -204,6 +214,12 @@ export type Database = {
         Insert: Omit<PaiementsRow, "id" | "created_at" | "updated_at" | "statut" | "date_deblocage"> &
           Partial<Pick<PaiementsRow, "id" | "statut" | "date_deblocage">>;
         Update: Partial<PaiementsRow>;
+        Relationships: [];
+      };
+      messages: {
+        Row: MessagesRow;
+        Insert: Omit<MessagesRow, "id" | "created_at" | "lu"> & Partial<Pick<MessagesRow, "id" | "lu">>;
+        Update: Partial<MessagesRow>;
         Relationships: [];
       };
     };

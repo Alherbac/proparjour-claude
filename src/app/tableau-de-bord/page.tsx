@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, MapPin, Phone, CalendarDays, FileDown } from "lucide-react";
+import { Mail, MapPin, Phone, CalendarDays, FileDown, MessageCircle } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -223,18 +223,25 @@ export default async function TableauDeBordPage() {
                       </span>
                       <span className="font-semibold text-foreground">{mission.montant_total} €</span>
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      {mission.paiement && STATUTS_FACTURABLES.includes(mission.paiement.statut) ? (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-4">
                         <Link
-                          href={`/api/factures/${mission.id}`}
+                          href={`/missions/${mission.id}`}
                           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                         >
-                          <FileDown className="size-3.5" />
-                          Télécharger la facture
+                          <MessageCircle className="size-3.5" />
+                          Voir la conversation
                         </Link>
-                      ) : (
-                        <span />
-                      )}
+                        {mission.paiement && STATUTS_FACTURABLES.includes(mission.paiement.statut) && (
+                          <Link
+                            href={`/api/factures/${mission.id}`}
+                            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                          >
+                            <FileDown className="size-3.5" />
+                            Télécharger la facture
+                          </Link>
+                        )}
+                      </div>
                       {STATUTS_ANNULABLES.includes(mission.statut) && (
                         <AnnulerMissionButton missionId={mission.id} />
                       )}
@@ -295,6 +302,15 @@ export default async function TableauDeBordPage() {
                         STATUTS_CLOTURABLES.includes(ligne.mission.statut) && (
                           <DeclarerServiceFaitButton ligneId={ligne.id} />
                         )}
+                    </div>
+                    <div className="mt-3 border-t border-border pt-3">
+                      <Link
+                        href={`/missions/${ligne.mission_id}`}
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                      >
+                        <MessageCircle className="size-3.5" />
+                        Voir la conversation
+                      </Link>
                     </div>
                   </li>
                 ))}
