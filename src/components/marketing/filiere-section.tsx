@@ -56,7 +56,7 @@ export function FiliereSection() {
             >
               <RevealOnScroll delayMs={index * 120}>
                 <Link
-                  href="#freelances"
+                  href={`/prestataires?metier=${metier.id}`}
                   className={cn(
                     "group block h-full rounded-3xl border bg-background p-8 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg",
                     metier.accent.border,

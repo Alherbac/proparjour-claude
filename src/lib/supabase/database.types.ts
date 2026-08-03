@@ -80,6 +80,7 @@ export type PrestatairesPublicsRow = {
   cnaps_verifie: boolean;
   prenom: string | null;
   nom: string | null;
+  created_at: string;
 };
 
 export type Database = {
