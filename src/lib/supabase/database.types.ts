@@ -19,6 +19,23 @@ export type TarifType = "horaire" | "journalier";
 
 export type StatutVerificationType = "en_attente" | "valide" | "refuse";
 
+export type MissionStatutType =
+  | "en_attente"
+  | "confirmee"
+  | "en_cours"
+  | "terminee"
+  | "annulee"
+  | "litige";
+
+export type LigneStatutType = "en_attente" | "acceptee" | "refusee";
+
+export type PaiementStatutType =
+  | "en_attente"
+  | "sequestre"
+  | "libere"
+  | "rembourse"
+  | "echec";
+
 export type UsersRow = {
   id: string;
   type: UserType | null;
@@ -83,6 +100,44 @@ export type PrestatairesPublicsRow = {
   created_at: string;
 };
 
+export type MissionsRow = {
+  id: string;
+  recruteur_id: string;
+  lieu: string;
+  date_mission: string;
+  statut: MissionStatutType;
+  service_fait: boolean;
+  montant_total: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MissionLignesRow = {
+  id: string;
+  mission_id: string;
+  prestataire_id: string;
+  metier: MetierType;
+  heure_debut: string;
+  heure_fin: string;
+  tarif_applique: number;
+  statut_acceptation: LigneStatutType;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaiementsRow = {
+  id: string;
+  mission_id: string;
+  montant: number;
+  statut: PaiementStatutType;
+  taux_commission: number;
+  montant_commission: number;
+  stripe_payment_intent_id: string | null;
+  date_deblocage: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -128,6 +183,27 @@ export type Database = {
           },
         ];
       };
+      missions: {
+        Row: MissionsRow;
+        Insert: Omit<MissionsRow, "id" | "created_at" | "updated_at" | "statut" | "service_fait"> &
+          Partial<Pick<MissionsRow, "id" | "statut" | "service_fait">>;
+        Update: Partial<MissionsRow>;
+        Relationships: [];
+      };
+      mission_lignes: {
+        Row: MissionLignesRow;
+        Insert: Omit<MissionLignesRow, "id" | "created_at" | "updated_at" | "statut_acceptation"> &
+          Partial<Pick<MissionLignesRow, "id" | "statut_acceptation">>;
+        Update: Partial<MissionLignesRow>;
+        Relationships: [];
+      };
+      paiements: {
+        Row: PaiementsRow;
+        Insert: Omit<PaiementsRow, "id" | "created_at" | "updated_at" | "statut" | "date_deblocage"> &
+          Partial<Pick<PaiementsRow, "id" | "statut" | "date_deblocage">>;
+        Update: Partial<PaiementsRow>;
+        Relationships: [];
+      };
     };
     Views: {
       prestataires_publics: {
@@ -135,6 +211,26 @@ export type Database = {
         Relationships: [];
       };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      creer_mission_payee: {
+        Args: {
+          p_recruteur_id: string;
+          p_lieu: string;
+          p_date_mission: string;
+          p_lignes: {
+            prestataire_id: string;
+            metier: MetierType;
+            heure_debut: string;
+            heure_fin: string;
+            tarif_applique: number;
+          }[];
+          p_montant_total: number;
+          p_taux_commission: number;
+          p_montant_commission: number;
+          p_stripe_payment_intent_id: string;
+        };
+        Returns: string;
+      };
+    };
   };
 };

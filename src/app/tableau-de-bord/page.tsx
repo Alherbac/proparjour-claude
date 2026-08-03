@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin, Phone, CalendarDays } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/app/actions/auth";
 import { METIERS } from "@/config/metiers";
+import { getMissionsRecruteur, getMissionsPrestataire } from "@/lib/missions";
+import { ReponseMissionButtons } from "@/components/missions/reponse-mission-buttons";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Tableau de bord — ProParJour",
@@ -23,6 +26,30 @@ const STATUT_VERIFICATION_LABELS: Record<string, string> = {
   en_attente: "Vérification en attente",
   valide: "Profil vérifié",
   refuse: "Profil refusé",
+};
+
+const MISSION_STATUT_LABELS: Record<string, string> = {
+  en_attente: "En attente de confirmation",
+  confirmee: "Confirmée",
+  en_cours: "En cours",
+  terminee: "Terminée",
+  annulee: "Annulée",
+  litige: "Litige",
+};
+
+const MISSION_STATUT_STYLES: Record<string, string> = {
+  en_attente: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  confirmee: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  en_cours: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+  terminee: "bg-secondary text-secondary-foreground",
+  annulee: "bg-destructive/10 text-destructive",
+  litige: "bg-destructive/10 text-destructive",
+};
+
+const LIGNE_STATUT_LABELS: Record<string, string> = {
+  en_attente: "En attente de votre réponse",
+  acceptee: "Acceptée",
+  refusee: "Refusée",
 };
 
 export default async function TableauDeBordPage() {
@@ -49,6 +76,10 @@ export default async function TableauDeBordPage() {
       ? supabase.from("entreprises").select("*").eq("user_id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+
+  const estRecruteur = profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier";
+  const missionsRecruteur = estRecruteur ? await getMissionsRecruteur(user.id) : [];
+  const missionsPrestataire = profil?.type === "prestataire" ? await getMissionsPrestataire(user.id) : [];
 
   const metier = METIERS.find((m) => m.id === prestataireProfil?.metier);
 
@@ -134,6 +165,102 @@ export default async function TableauDeBordPage() {
             </div>
           )}
         </div>
+
+        {estRecruteur && (
+          <div className="mt-8">
+            <h2 className="font-heading text-xl font-semibold text-foreground">
+              Mes missions
+            </h2>
+            {missionsRecruteur.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Aucune mission pour l&apos;instant — réservez un prestataire pour en créer une.
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-4">
+                {missionsRecruteur.map((mission) => (
+                  <li
+                    key={mission.id}
+                    className="rounded-2xl border border-border bg-background p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm text-foreground">
+                        <CalendarDays className="size-4 text-muted-foreground" />
+                        {mission.date_mission} · {mission.lieu}
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-3 py-1 text-xs font-medium",
+                          MISSION_STATUT_STYLES[mission.statut],
+                        )}
+                      >
+                        {MISSION_STATUT_LABELS[mission.statut]}
+                      </span>
+                    </div>
+                    <ul className="mt-3 space-y-1.5">
+                      {mission.lignes.map((ligne) => (
+                        <li
+                          key={ligne.id}
+                          className="flex items-center justify-between text-sm text-muted-foreground"
+                        >
+                          <span>
+                            {ligne.prenom} {ligne.nom} · {ligne.heure_debut}–{ligne.heure_fin}
+                          </span>
+                          <span>{LIGNE_STATUT_LABELS[ligne.statut_acceptation]}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
+                      <span className="text-muted-foreground">
+                        Paiement : {mission.paiement?.statut === "sequestre" ? "séquestré" : mission.paiement?.statut}
+                      </span>
+                      <span className="font-semibold text-foreground">{mission.montant_total} €</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {profil?.type === "prestataire" && (
+          <div className="mt-8">
+            <h2 className="font-heading text-xl font-semibold text-foreground">
+              Missions proposées
+            </h2>
+            {missionsPrestataire.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Aucune mission proposée pour l&apos;instant.
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-4">
+                {missionsPrestataire.map((ligne) => (
+                  <li
+                    key={ligne.id}
+                    className="rounded-2xl border border-border bg-background p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm text-foreground">
+                        <CalendarDays className="size-4 text-muted-foreground" />
+                        {ligne.mission.date_mission} · {ligne.mission.lieu}
+                      </div>
+                      <span className="text-sm font-medium text-foreground">
+                        {ligne.heure_debut}–{ligne.heure_fin} · {ligne.tarif_applique} €
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                      <span className="text-sm text-muted-foreground">
+                        {LIGNE_STATUT_LABELS[ligne.statut_acceptation]}
+                      </span>
+                      {ligne.statut_acceptation === "en_attente" && (
+                        <ReponseMissionButtons ligneId={ligne.id} />
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

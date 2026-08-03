@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bell, LayoutDashboard } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { PanierIndicator } from "@/components/layout/panier-indicator";
 import { Button } from "@/components/ui/button";
 
 const NAV_LINKS = [
@@ -30,6 +31,7 @@ export function Header() {
 
         <div className="ml-auto flex items-center gap-1 lg:ml-0">
           <ThemeToggle />
+          <PanierIndicator />
           <Button
             variant="ghost"
             size="icon"

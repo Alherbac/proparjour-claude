@@ -151,7 +151,9 @@ export default async function PrestataireProfilPage({
         <aside className="h-fit lg:sticky lg:top-24">
           <BookingCard
             freelance={{
+              id: prestataire.id,
               prenom,
+              metier: prestataire.metier,
               ville: prestataire.ville,
               tarifMontant: prestataire.tarif_montant,
               tarifType: prestataire.tarif_type,
