@@ -11,10 +11,13 @@ import { METIERS } from "@/config/metiers";
 import { getMissionsRecruteur, getMissionsPrestataire } from "@/lib/missions";
 import { ReponseMissionButtons } from "@/components/missions/reponse-mission-buttons";
 import { AnnulerMissionButton } from "@/components/missions/annuler-mission-button";
+import { DeclarerServiceFaitButton } from "@/components/missions/declarer-service-fait-button";
+import { ConfirmerOuContester } from "@/components/missions/confirmer-ou-contester";
 import { cn } from "@/lib/utils";
 
 const STATUTS_ANNULABLES = ["en_attente", "confirmee"];
 const STATUTS_FACTURABLES = ["sequestre", "libere"];
+const STATUTS_CLOTURABLES = ["confirmee", "en_cours"];
 
 export const metadata: Metadata = {
   title: "Tableau de bord — ProParJour",
@@ -236,6 +239,16 @@ export default async function TableauDeBordPage() {
                         <AnnulerMissionButton missionId={mission.id} />
                       )}
                     </div>
+                    {STATUTS_CLOTURABLES.includes(mission.statut) && (
+                      <div className="mt-3 flex justify-end border-t border-border pt-3">
+                        <ConfirmerOuContester missionId={mission.id} />
+                      </div>
+                    )}
+                    {mission.statut === "litige" && mission.motif_litige && (
+                      <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        Litige : {mission.motif_litige}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -270,11 +283,18 @@ export default async function TableauDeBordPage() {
                     </div>
                     <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
                       <span className="text-sm text-muted-foreground">
-                        {LIGNE_STATUT_LABELS[ligne.statut_acceptation]}
+                        {ligne.service_fait
+                          ? "Service fait déclaré"
+                          : LIGNE_STATUT_LABELS[ligne.statut_acceptation]}
                       </span>
                       {ligne.statut_acceptation === "en_attente" && (
                         <ReponseMissionButtons ligneId={ligne.id} />
                       )}
+                      {ligne.statut_acceptation === "acceptee" &&
+                        !ligne.service_fait &&
+                        STATUTS_CLOTURABLES.includes(ligne.mission.statut) && (
+                          <DeclarerServiceFaitButton ligneId={ligne.id} />
+                        )}
                     </div>
                   </li>
                 ))}

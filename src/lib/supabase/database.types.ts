@@ -107,6 +107,7 @@ export type MissionsRow = {
   date_mission: string;
   statut: MissionStatutType;
   service_fait: boolean;
+  motif_litige: string | null;
   montant_total: number;
   created_at: string;
   updated_at: string;
@@ -121,6 +122,7 @@ export type MissionLignesRow = {
   heure_fin: string;
   tarif_applique: number;
   statut_acceptation: LigneStatutType;
+  service_fait: boolean;
   created_at: string;
   updated_at: string;
 };
