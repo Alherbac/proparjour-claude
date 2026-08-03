@@ -20,7 +20,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(
-    `${origin}/inscription/recruteur?erreur=oauth`,
-  );
+  return NextResponse.redirect(`${origin}${next}?erreur=oauth`);
 }

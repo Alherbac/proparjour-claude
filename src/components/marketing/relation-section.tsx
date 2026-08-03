@@ -10,6 +10,7 @@ import {
   Handshake,
   type LucideIcon,
 } from "lucide-react";
+import { RevealOnScroll } from "@/components/motion/reveal-on-scroll";
 import { cn } from "@/lib/utils";
 
 type Avantage = { icon: LucideIcon; title: string; description: string };
@@ -107,28 +108,35 @@ function AvantageColumn({
 export function RelationSection() {
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 lg:px-8 lg:py-24">
-      <div className="mx-auto max-w-2xl text-center">
+      <RevealOnScroll className="mx-auto max-w-2xl text-center">
         <h2 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           Travailleurs indépendants et entreprises : une relation exclusive
           et profitable
         </h2>
-      </div>
+      </RevealOnScroll>
 
       <div className="mt-14 grid items-center gap-12 lg:grid-cols-[1fr_auto_1fr]">
-        <AvantageColumn
-          title="Pour les Prestataires Indépendants"
-          items={AVANTAGES_PRESTATAIRES}
-        />
+        <RevealOnScroll delayMs={0}>
+          <AvantageColumn
+            title="Pour les Prestataires Indépendants"
+            items={AVANTAGES_PRESTATAIRES}
+          />
+        </RevealOnScroll>
 
-        <div className="mx-auto flex size-32 shrink-0 items-center justify-center rounded-full bg-primary/10 lg:size-40">
+        <RevealOnScroll
+          delayMs={150}
+          className="mx-auto flex size-32 shrink-0 items-center justify-center rounded-full bg-primary/10 lg:size-40"
+        >
           <Handshake className="size-14 text-primary lg:size-16" />
-        </div>
+        </RevealOnScroll>
 
-        <AvantageColumn
-          title="Pour les Entreprises"
-          items={AVANTAGES_ENTREPRISES}
-          align="right"
-        />
+        <RevealOnScroll delayMs={300}>
+          <AvantageColumn
+            title="Pour les Entreprises"
+            items={AVANTAGES_ENTREPRISES}
+            align="right"
+          />
+        </RevealOnScroll>
       </div>
     </section>
   );

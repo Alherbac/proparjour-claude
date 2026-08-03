@@ -1,7 +1,14 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Send, Sparkles, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HeroVisual } from "@/components/marketing/hero-visual";
+import { METIERS } from "@/config/metiers";
+
+const FILIERE_EMOJIS: Record<string, string> = {
+  securite: "🛡️",
+  accueil: "🏨",
+  vente: "🛍️",
+};
 
 export function Hero() {
   return (
@@ -23,14 +30,28 @@ export function Hero() {
         </span>
 
         <h1 className="mx-auto mt-5 font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl lg:whitespace-nowrap lg:text-[2.75rem] xl:text-5xl">
-          Trouvez les meilleurs freelances de terrain, à la demande
+          Trouvez les meilleurs freelances de terrain,{" "}
+          <span className="text-primary">à la demande</span>
         </h1>
 
-        <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-cream-foreground/80 sm:text-lg">
-          Réservez en quelques clics des agents de sécurité certifiés CNAPS,
-          des hôtes et hôtesses d&apos;accueil, ou des vendeurs et personnel
-          de commerce, disponibles à la journée, à l&apos;heure ou sur une
-          mission courte.
+        <div className="mx-auto mt-6 flex flex-wrap items-center justify-center gap-3">
+          {METIERS.map((metier) => (
+            <span
+              key={metier.id}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/70 px-3.5 py-1.5 text-sm font-medium text-cream-foreground/80"
+            >
+              <span aria-hidden="true">{FILIERE_EMOJIS[metier.id]}</span>
+              {metier.filiere}
+            </span>
+          ))}
+        </div>
+
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-cream-foreground/80 sm:text-lg">
+          ProParJour connecte les entreprises avec des freelances terrain
+          qualifiés et vérifiés - agents de sécurité certifiés CNAPS, hôtes et
+          hôtesses d&apos;accueil, vendeurs et personnel de commerce.
+          Recrutement simple, contrats automatisés, facturation intégrée et
+          paiements sécurisés - tout au même endroit.
         </p>
 
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -39,15 +60,17 @@ export function Hero() {
             size="lg"
             className="rounded-full"
           >
-            Je recrute
+            <Send className="size-4" />
+            Je recrute un prestataire
           </Button>
           <Button
             render={<Link href="/inscription/prestataire" />}
             size="lg"
             variant="outline"
-            className="rounded-full border-primary text-primary hover:bg-primary/10 hover:text-primary"
+            className="rounded-full"
           >
-            Je suis prestataire
+            <UserPlus className="size-4" />
+            Je propose mes services
           </Button>
         </div>
       </div>

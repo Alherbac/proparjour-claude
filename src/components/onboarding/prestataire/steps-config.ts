@@ -77,12 +77,12 @@ export function getStepsForMetier(metier?: MetierId): StepDefinition[] {
     if (step.id !== "specialites") return step;
     const fields: (keyof PrestataireFormValues)[] =
       metier === "securite"
-        ? ["numeroCarteCnaps", "certifications"]
+        ? ["specialites", "numeroCarteCnaps", "certifications"]
         : metier === "accueil"
-          ? ["langues", "tenue"]
+          ? ["specialites", "langues", "tenue"]
           : metier === "vente"
-            ? ["secteurExperience", "remunerationCommission"]
-            : [];
+            ? ["specialites", "secteurExperience", "remunerationCommission"]
+            : ["specialites"];
     return { ...step, fields };
   });
 }

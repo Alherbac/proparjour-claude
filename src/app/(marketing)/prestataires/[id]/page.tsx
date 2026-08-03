@@ -2,17 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin, Briefcase, CalendarDays } from "lucide-react";
-import { FREELANCES_DEMO } from "@/data/freelances-demo";
+import { createClient } from "@/lib/supabase/server";
 import { METIERS } from "@/config/metiers";
+import type { BadgeVerification } from "@/data/freelances-demo";
 import { VerificationBadges } from "@/components/prestataire/verification-badges";
-import { StarRating } from "@/components/prestataire/star-rating";
 import { AvisList } from "@/components/prestataire/avis-list";
 import { BookingCard } from "@/components/prestataire/booking-card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export function generateStaticParams() {
-  return FREELANCES_DEMO.map((freelance) => ({ id: freelance.id }));
+async function getPrestataire(id: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("prestataires_publics")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  return data;
 }
 
 export async function generateMetadata({
@@ -21,13 +27,14 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const freelance = FREELANCES_DEMO.find((f) => f.id === id);
-  if (!freelance) return {};
+  const prestataire = await getPrestataire(id);
+  if (!prestataire) return {};
 
-  const metier = METIERS.find((m) => m.id === freelance.metier);
+  const metier = METIERS.find((m) => m.id === prestataire.metier);
+  const prenom = prestataire.prenom ?? "";
   return {
-    title: `${freelance.prenom} ${freelance.nom} — ${metier?.label} à ${freelance.ville} | ProParJour`,
-    description: freelance.bio,
+    title: `${prenom} — ${metier?.label} à ${prestataire.ville} | ProParJour`,
+    description: prestataire.bio ?? undefined,
   };
 }
 
@@ -37,10 +44,18 @@ export default async function PrestataireProfilPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const freelance = FREELANCES_DEMO.find((f) => f.id === id);
-  if (!freelance) notFound();
+  const prestataire = await getPrestataire(id);
+  if (!prestataire) notFound();
 
-  const metier = METIERS.find((m) => m.id === freelance.metier);
+  const metier = METIERS.find((m) => m.id === prestataire.metier);
+  const prenom = prestataire.prenom ?? "Prestataire";
+  const nom = prestataire.nom ?? "";
+
+  const badges: BadgeVerification[] = [];
+  if (prestataire.statut_verification === "valide") badges.push("identite");
+  if (prestataire.metier === "securite" && prestataire.cnaps_verifie) {
+    badges.push("cnaps");
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 lg:px-8 lg:py-14">
@@ -57,36 +72,28 @@ export default async function PrestataireProfilPage({
             <div
               className={cn(
                 "flex size-32 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br font-heading text-4xl font-semibold text-foreground/70 sm:size-40",
-                freelance.gradient,
+                metier?.accent.gradient,
               )}
             >
-              {freelance.prenom.charAt(0)}
+              {prenom.charAt(0)}
             </div>
 
             <div className="min-w-0">
               <h1 className="font-heading text-3xl font-semibold text-foreground">
-                {freelance.prenom} {freelance.nom}
+                {prenom} {nom}
               </h1>
               <p className="mt-1 flex items-center gap-1.5 text-muted-foreground">
                 <Briefcase className="size-4" />
-                {`${metier?.label} · ${freelance.anneesExperience} ans d'expérience`}
+                {metier?.label}
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-muted-foreground">
                 <MapPin className="size-4" />
-                {freelance.ville}
+                {prestataire.ville}
               </p>
 
-              <div className="mt-3 flex items-center gap-2">
-                <StarRating note={freelance.note} size="md" />
-                <span className="font-medium text-foreground">
-                  {freelance.note.toFixed(1)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  ({freelance.nombreAvis} avis)
-                </span>
-              </div>
-
-              <VerificationBadges badges={freelance.badges} className="mt-4" />
+              {badges.length > 0 && (
+                <VerificationBadges badges={badges} className="mt-4" />
+              )}
             </div>
           </div>
 
@@ -95,29 +102,31 @@ export default async function PrestataireProfilPage({
               À propos
             </h2>
             <p className="mt-3 leading-relaxed text-muted-foreground">
-              {freelance.bio}
+              {prestataire.bio || "Ce prestataire n'a pas encore rédigé de présentation."}
             </p>
           </section>
 
-          <section>
-            <h2 className="font-heading text-xl font-semibold text-foreground">
-              Spécialités
-            </h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {freelance.specialites.map((specialite) => (
-                <Badge key={specialite} variant="secondary" className="font-normal">
-                  {specialite}
-                </Badge>
-              ))}
-            </div>
-          </section>
+          {prestataire.specialites.length > 0 && (
+            <section>
+              <h2 className="font-heading text-xl font-semibold text-foreground">
+                Spécialités
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {prestataire.specialites.map((specialite) => (
+                  <Badge key={specialite} variant="secondary" className="font-normal">
+                    {specialite}
+                  </Badge>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="font-heading text-xl font-semibold text-foreground">
               Disponibilités
             </h2>
             <div className="mt-3 flex flex-wrap gap-2">
-              {freelance.disponibilites.map((jour) => (
+              {prestataire.disponibilites.map((jour) => (
                 <span
                   key={jour}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-foreground"
@@ -131,16 +140,23 @@ export default async function PrestataireProfilPage({
 
           <section>
             <h2 className="font-heading text-xl font-semibold text-foreground">
-              Avis ({freelance.nombreAvis})
+              Avis
             </h2>
             <div className="mt-4">
-              <AvisList avis={freelance.avis} />
+              <AvisList avis={[]} />
             </div>
           </section>
         </div>
 
         <aside className="h-fit lg:sticky lg:top-24">
-          <BookingCard freelance={freelance} />
+          <BookingCard
+            freelance={{
+              prenom,
+              ville: prestataire.ville,
+              tarifMontant: prestataire.tarif_montant,
+              tarifType: prestataire.tarif_type,
+            }}
+          />
         </aside>
       </div>
     </div>

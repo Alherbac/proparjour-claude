@@ -63,6 +63,7 @@ export async function completerProfilPrestataire(
     tenue: data.tenue || null,
     secteur_experience: data.secteurExperience || null,
     remuneration_commission: data.remunerationCommission,
+    specialites: data.specialites,
     ville: data.ville,
     tarif_type: data.tarifType,
     tarif_montant: data.tarifMontant,

@@ -49,6 +49,20 @@ export function PreviewCard({
             {values.tarifType === "horaire" ? "/ heure" : "/ jour"}
           </p>
         ) : null}
+        {values.specialites && values.specialites.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {values.specialites.slice(0, 3).map((specialite) => (
+              <Badge key={specialite} variant="secondary" className="font-normal">
+                {specialite}
+              </Badge>
+            ))}
+            {values.specialites.length > 3 && (
+              <Badge variant="secondary" className="font-normal">
+                +{values.specialites.length - 3}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
       <p className="border-t border-border px-4 py-2 text-center text-[11px] text-muted-foreground">
         Aperçu de votre future fiche

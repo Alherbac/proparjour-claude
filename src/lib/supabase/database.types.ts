@@ -51,6 +51,7 @@ export type PrestatairesProfilsRow = {
   tenue: string | null;
   secteur_experience: string | null;
   remuneration_commission: boolean;
+  specialites: string[];
   bio: string | null;
   ville: string;
   tarif_type: TarifType;
@@ -61,6 +62,24 @@ export type PrestatairesProfilsRow = {
   motif_refus: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type PrestatairesPublicsRow = {
+  id: string;
+  metier: MetierType;
+  certifications: string[];
+  langues: string[];
+  bio: string | null;
+  ville: string;
+  tarif_type: TarifType;
+  tarif_montant: number;
+  disponibilites: string[];
+  photo_url: string | null;
+  specialites: string[];
+  statut_verification: StatutVerificationType;
+  cnaps_verifie: boolean;
+  prenom: string | null;
+  nom: string | null;
 };
 
 export type Database = {
@@ -98,10 +117,23 @@ export type Database = {
             >
           >;
         Update: Partial<PrestatairesProfilsRow>;
+        Relationships: [
+          {
+            foreignKeyName: "prestataires_profils_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+    };
+    Views: {
+      prestataires_publics: {
+        Row: PrestatairesPublicsRow;
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
     Functions: Record<string, never>;
   };
 };

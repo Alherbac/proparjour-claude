@@ -3,9 +3,15 @@
 import { toast } from "sonner";
 import { ShoppingCart, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { FreelanceDemo } from "@/data/freelances-demo";
 
-export function BookingCard({ freelance }: { freelance: FreelanceDemo }) {
+type BookingCardFreelance = {
+  prenom: string;
+  ville: string;
+  tarifMontant: number;
+  tarifType: "horaire" | "journalier";
+};
+
+export function BookingCard({ freelance }: { freelance: BookingCardFreelance }) {
   return (
     <div className="rounded-2xl border border-border bg-background p-6 shadow-sm">
       <div className="flex items-baseline gap-1">

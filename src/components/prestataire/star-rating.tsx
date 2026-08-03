@@ -19,7 +19,7 @@ export function StarRating({
           className={cn(
             iconSize,
             index < Math.round(note)
-              ? "fill-primary text-primary"
+              ? "fill-amber-400 text-amber-400"
               : "text-muted-foreground/30",
           )}
         />

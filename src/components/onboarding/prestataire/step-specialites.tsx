@@ -16,6 +16,10 @@ import {
   SECTEURS_VENTE,
   type PrestataireFormValues,
 } from "@/components/onboarding/prestataire/schema";
+import {
+  MAX_SPECIALITES,
+  SPECIALTY_CATEGORIES,
+} from "@/config/specialtyCategories";
 
 export function StepSpecialites() {
   const {
@@ -24,6 +28,7 @@ export function StepSpecialites() {
     formState: { errors },
   } = useFormContext<PrestataireFormValues>();
   const metier = useWatch({ control, name: "metier" });
+  const categories = metier ? SPECIALTY_CATEGORIES[metier] : [];
 
   return (
     <div className="space-y-5">
@@ -32,9 +37,52 @@ export function StepSpecialites() {
           Vos spécialités
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ces informations apparaîtront sur votre fiche publique.
+          Ces informations apparaîtront sur votre fiche publique, sous forme
+          de badges, et permettront aux recruteurs de vous retrouver par
+          mot-clé.
         </p>
       </div>
+
+      <Controller
+        name="specialites"
+        control={control}
+        render={({ field }) => (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-foreground">
+              Choisissez de 1 à {MAX_SPECIALITES} spécialités{" "}
+              <span
+                className={
+                  field.value.length >= MAX_SPECIALITES
+                    ? "text-primary"
+                    : "text-muted-foreground"
+                }
+              >
+                ({field.value.length}/{MAX_SPECIALITES})
+              </span>
+            </p>
+
+            {categories.map((categorie) => (
+              <div key={categorie.label} className="space-y-2">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  {categorie.label}
+                </p>
+                <ChipMultiSelect
+                  options={categorie.specialites}
+                  value={field.value}
+                  onChange={field.onChange}
+                  max={MAX_SPECIALITES}
+                />
+              </div>
+            ))}
+
+            {errors.specialites?.message && (
+              <p className="text-sm text-destructive">
+                {errors.specialites.message}
+              </p>
+            )}
+          </div>
+        )}
+      />
 
       {metier === "securite" && (
         <>

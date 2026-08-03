@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_SPECIALITES } from "@/config/specialtyCategories";
 
 export const STATUT_INDEPENDANT_VALUES = [
   "auto_entrepreneur",
@@ -41,6 +42,10 @@ export const prestataireSchema = z
     tenue: z.string().trim().optional(),
     secteurExperience: z.string().trim().optional(),
     remunerationCommission: z.boolean(),
+    specialites: z
+      .array(z.string())
+      .min(1, "Sélectionnez au moins une spécialité")
+      .max(MAX_SPECIALITES, `${MAX_SPECIALITES} spécialités maximum`),
 
     ville: z.string().trim().min(1, "La ville est requise"),
 
@@ -64,6 +69,7 @@ export type PrestataireFormValues = z.infer<typeof prestataireSchema>;
 export const PRESTATAIRE_DEFAULT_VALUES: Partial<PrestataireFormValues> = {
   certifications: [],
   langues: [],
+  specialites: [],
   remunerationCommission: false,
   disponibilites: [],
   tarifType: "journalier",
