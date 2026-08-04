@@ -127,6 +127,17 @@ export type MissionLignesRow = {
   updated_at: string;
 };
 
+export type NotificationsRow = {
+  id: string;
+  user_id: string;
+  type: string;
+  titre: string;
+  contenu: string | null;
+  lien: string | null;
+  lu: boolean;
+  created_at: string;
+};
+
 export type MessagesRow = {
   id: string;
   mission_id: string;
@@ -220,6 +231,13 @@ export type Database = {
         Row: MessagesRow;
         Insert: Omit<MessagesRow, "id" | "created_at" | "lu"> & Partial<Pick<MessagesRow, "id" | "lu">>;
         Update: Partial<MessagesRow>;
+        Relationships: [];
+      };
+      notifications: {
+        Row: NotificationsRow;
+        Insert: Omit<NotificationsRow, "id" | "created_at" | "lu"> &
+          Partial<Pick<NotificationsRow, "id" | "lu">>;
+        Update: Partial<NotificationsRow>;
         Relationships: [];
       };
     };

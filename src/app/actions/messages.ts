@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { creerNotification } from "@/lib/notifications";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -81,6 +82,14 @@ export async function envoyerMessage(
   if (error) {
     return { success: false, error: error.message };
   }
+
+  await creerNotification({
+    userId: destinataireId,
+    type: "nouveau_message",
+    titre: "Nouveau message",
+    contenu: texte.length > 80 ? `${texte.slice(0, 80)}…` : texte,
+    lien: `/missions/${missionId}`,
+  });
 
   return { success: true };
 }

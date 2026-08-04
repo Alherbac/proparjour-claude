@@ -3,10 +3,30 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
+import { creerNotification } from "@/lib/notifications";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
 const DELAI_ANNULATION_HEURES = 48;
+
+async function getPrestataireUserIds(
+  admin: SupabaseClient<Database>,
+  missionId: string,
+): Promise<string[]> {
+  const { data: lignes } = await admin
+    .from("mission_lignes")
+    .select("prestataire_id")
+    .eq("mission_id", missionId);
+  const prestataireIds = [...new Set((lignes ?? []).map((l) => l.prestataire_id))];
+  if (prestataireIds.length === 0) return [];
+  const { data: profils } = await admin
+    .from("prestataires_profils")
+    .select("user_id")
+    .in("id", prestataireIds);
+  return (profils ?? []).map((p) => p.user_id);
+}
 
 export async function repondreMissionLigne(
   ligneId: string,
@@ -52,6 +72,12 @@ export async function repondreMissionLigne(
     return { success: false, error: updateError.message };
   }
 
+  const { data: mission } = await admin
+    .from("missions")
+    .select("recruteur_id")
+    .eq("id", ligne.mission_id)
+    .maybeSingle();
+
   if (reponse === "acceptee") {
     const { data: toutesLesLignes } = await admin
       .from("mission_lignes")
@@ -65,6 +91,16 @@ export async function repondreMissionLigne(
     if (toutesAcceptees) {
       await admin.from("missions").update({ statut: "confirmee" }).eq("id", ligne.mission_id);
     }
+  }
+
+  if (mission) {
+    await creerNotification({
+      userId: mission.recruteur_id,
+      type: reponse === "acceptee" ? "mission_acceptee" : "mission_refusee",
+      titre: reponse === "acceptee" ? "Mission acceptée" : "Mission refusée",
+      contenu: reponse === "acceptee" ? "Un prestataire a accepté votre mission." : "Un prestataire a refusé votre mission.",
+      lien: `/missions/${ligne.mission_id}`,
+    });
   }
 
   return { success: true };
@@ -149,6 +185,19 @@ export async function annulerMission(missionId: string): Promise<ActionResult> {
     }
   }
 
+  const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
+  await Promise.all(
+    prestataireUserIds.map((userId) =>
+      creerNotification({
+        userId,
+        type: "mission_annulee",
+        titre: "Mission annulée",
+        contenu: `La mission du ${mission.date_mission} a été annulée par le recruteur.`,
+        lien: `/missions/${missionId}`,
+      }),
+    ),
+  );
+
   return { success: true };
 }
 
@@ -197,7 +246,7 @@ export async function declarerServiceFaitLigne(ligneId: string): Promise<ActionR
 
   const { data: mission } = await admin
     .from("missions")
-    .select("statut, date_mission")
+    .select("recruteur_id, statut, date_mission")
     .eq("id", ligne.mission_id)
     .maybeSingle();
   if (!mission) {
@@ -221,6 +270,14 @@ export async function declarerServiceFaitLigne(ligneId: string): Promise<ActionR
   }
 
   await admin.from("missions").update({ statut: "en_cours" }).eq("id", ligne.mission_id).eq("statut", "confirmee");
+
+  await creerNotification({
+    userId: mission.recruteur_id,
+    type: "service_fait_declare",
+    titre: "Service fait déclaré",
+    contenu: "Un prestataire a déclaré avoir effectué sa mission.",
+    lien: `/missions/${ligne.mission_id}`,
+  });
 
   return { success: true };
 }
@@ -273,6 +330,19 @@ export async function confirmerServiceFait(missionId: string): Promise<ActionRes
     return { success: false, error: paiementError.message };
   }
 
+  const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
+  await Promise.all(
+    prestataireUserIds.map((userId) =>
+      creerNotification({
+        userId,
+        type: "paiement_libere",
+        titre: "Paiement débloqué",
+        contenu: "Le recruteur a confirmé le service fait, votre paiement a été débloqué.",
+        lien: `/missions/${missionId}`,
+      }),
+    ),
+  );
+
   return { success: true };
 }
 
@@ -315,6 +385,19 @@ export async function contesterMission(missionId: string, motif: string): Promis
   if (error) {
     return { success: false, error: error.message };
   }
+
+  const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
+  await Promise.all(
+    prestataireUserIds.map((userId) =>
+      creerNotification({
+        userId,
+        type: "litige",
+        titre: "Mission contestée",
+        contenu: "Le recruteur a contesté la réalisation de cette mission.",
+        lien: `/missions/${missionId}`,
+      }),
+    ),
+  );
 
   return { success: true };
 }

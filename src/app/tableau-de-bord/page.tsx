@@ -3,12 +3,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mail, MapPin, Phone, CalendarDays, FileDown, MessageCircle } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/app/actions/auth";
 import { METIERS } from "@/config/metiers";
 import { getMissionsRecruteur, getMissionsPrestataire } from "@/lib/missions";
+import { getNotifications } from "@/lib/notifications";
 import { ReponseMissionButtons } from "@/components/missions/reponse-mission-buttons";
 import { AnnulerMissionButton } from "@/components/missions/annuler-mission-button";
 import { DeclarerServiceFaitButton } from "@/components/missions/declarer-service-fait-button";
@@ -88,6 +90,7 @@ export default async function TableauDeBordPage() {
   const estRecruteur = profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier";
   const missionsRecruteur = estRecruteur ? await getMissionsRecruteur(user.id) : [];
   const missionsPrestataire = profil?.type === "prestataire" ? await getMissionsPrestataire(user.id) : [];
+  const notifications = await getNotifications();
 
   const metier = METIERS.find((m) => m.id === prestataireProfil?.metier);
 
@@ -96,11 +99,14 @@ export default async function TableauDeBordPage() {
       <header className="border-b border-border bg-background px-4 py-4 lg:px-8">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <Logo />
-          <form action={signOutAction}>
-            <Button type="submit" variant="ghost" size="sm">
-              Se déconnecter
-            </Button>
-          </form>
+          <div className="flex items-center gap-2">
+            <NotificationBell userId={user.id} notificationsInitiales={notifications} />
+            <form action={signOutAction}>
+              <Button type="submit" variant="ghost" size="sm">
+                Se déconnecter
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
 

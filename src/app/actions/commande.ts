@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient, TAUX_COMMISSION_DEFAUT } from "@/lib/stripe/server";
 import { montantLigne, type Panier } from "@/lib/panier";
 import type { MetierType } from "@/lib/supabase/database.types";
+import { creerNotification } from "@/lib/notifications";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -175,6 +176,21 @@ export async function finaliserCommande(
 
   if (error || !missionId) {
     return { success: false, error: error?.message ?? "Échec de la création de la mission." };
+  }
+
+  const prestataireIds = [...new Set(revalidation.lignesVerifiees.map((l) => l.prestataire_id))];
+  const { data: profils } = await admin
+    .from("prestataires_profils")
+    .select("user_id")
+    .in("id", prestataireIds);
+  for (const profil of profils ?? []) {
+    await creerNotification({
+      userId: profil.user_id,
+      type: "mission_proposee",
+      titre: "Nouvelle mission proposée",
+      contenu: `${panier.lieu} — ${panier.dateMission}`,
+      lien: `/missions/${missionId}`,
+    });
   }
 
   return { success: true, data: { missionId } };
