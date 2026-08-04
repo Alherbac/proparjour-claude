@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Mail, Phone, MapPin, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Mail, Phone, MapPin, ShieldCheck, ShieldAlert, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { METIERS } from "@/config/metiers";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,14 @@ export default async function ComptePage() {
     supabase.from("users").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("prestataires_profils").select("*").eq("user_id", user.id).maybeSingle(),
   ]);
+
+  if (profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier") {
+    const { data: entreprise } =
+      profil.type === "recruteur_entreprise"
+        ? await supabase.from("entreprises").select("*").eq("user_id", user.id).maybeSingle()
+        : { data: null };
+    return <ComptePageRecruteur profil={profil} email={user.email ?? ""} entreprise={entreprise} />;
+  }
 
   if (!prestataireProfil) redirect("/tableau-de-bord");
 
@@ -105,6 +113,72 @@ export default async function ComptePage() {
             ))}
           </div>
         )}
+      </Section>
+
+      <Section titre="Paramètres">
+        <form action={signOutAction}>
+          <Button type="submit" variant="outline" className="rounded-full">
+            Se déconnecter
+          </Button>
+        </form>
+      </Section>
+    </div>
+  );
+}
+
+function ComptePageRecruteur({
+  profil,
+  email,
+  entreprise,
+}: {
+  profil: { prenom: string | null; nom: string | null; telephone: string | null; ville: string | null };
+  email: string;
+  entreprise: { raison_sociale: string; siret: string; secteur_activite: string } | null;
+}) {
+  return (
+    <div className="space-y-4">
+      <h1 className="font-heading text-2xl font-semibold text-foreground">Mon compte</h1>
+
+      <Section titre="Mon profil">
+        <div className="space-y-2">
+          <p className="font-medium text-foreground">
+            {profil.prenom} {profil.nom}
+          </p>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Mail className="size-4" />
+            {email}
+          </div>
+          {profil.telephone && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Phone className="size-4" />
+              {profil.telephone}
+            </div>
+          )}
+          {profil.ville && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="size-4" />
+              {profil.ville}
+            </div>
+          )}
+        </div>
+        {entreprise && (
+          <div className="mt-3 border-t border-border pt-3 text-sm">
+            <p className="font-medium text-foreground">{entreprise.raison_sociale}</p>
+            <p className="text-muted-foreground">
+              SIRET {entreprise.siret} — {entreprise.secteur_activite}
+            </p>
+          </div>
+        )}
+      </Section>
+
+      <Section titre="Moyens de paiement">
+        <div className="flex items-center gap-3">
+          <CreditCard className="size-6 shrink-0 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Le paiement se fait par carte au moment de la réservation. Aucune carte enregistrée pour
+            l&apos;instant.
+          </p>
+        </div>
       </Section>
 
       <Section titre="Paramètres">

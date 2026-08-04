@@ -8,11 +8,9 @@ import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/app/actions/auth";
 
 /**
- * Chrome commun (en-tête + navigation basse) réservé au nouveau
- * parcours prestataire (Accueil / Mes missions / Mon argent / Mon
- * compte). Le recruteur garde, pour l'instant, son propre en-tête
- * défini dans page.tsx (le miroir recruteur n'est pas encore
- * construit) — ce layout ne rend alors aucun chrome supplémentaire.
+ * Chrome commun (en-tête + navigation basse) du tableau de bord,
+ * partagé entre les deux miroirs prestataire et recruteur — seule la
+ * navigation basse change de contenu selon le rôle (BottomNav).
  */
 export default async function TableauDeBordLayout({
   children,
@@ -33,10 +31,11 @@ export default async function TableauDeBordLayout({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profil?.type !== "prestataire") {
+  if (profil?.type !== "prestataire" && profil?.type !== "recruteur_entreprise" && profil?.type !== "recruteur_particulier") {
     return <>{children}</>;
   }
 
+  const role = profil.type === "prestataire" ? "prestataire" : "recruteur";
   const notifications = await getNotifications();
 
   return (
@@ -55,7 +54,7 @@ export default async function TableauDeBordLayout({
         </div>
       </header>
       <div className="mx-auto max-w-3xl px-4 py-6">{children}</div>
-      <BottomNav />
+      <BottomNav role={role} />
     </div>
   );
 }

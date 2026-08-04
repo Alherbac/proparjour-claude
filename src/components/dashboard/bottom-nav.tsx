@@ -5,15 +5,22 @@ import { usePathname } from "next/navigation";
 import { Home, ClipboardList, Wallet, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const LIENS = [
+const LIENS_PRESTATAIRE = [
   { href: "/tableau-de-bord/accueil", label: "Accueil", icon: Home },
   { href: "/tableau-de-bord/missions", label: "Missions", icon: ClipboardList },
   { href: "/tableau-de-bord/argent", label: "Mon argent", icon: Wallet },
   { href: "/tableau-de-bord/compte", label: "Mon compte", icon: UserRound },
 ] as const;
 
-export function BottomNav() {
+const LIENS_RECRUTEUR = [
+  { href: "/tableau-de-bord/accueil", label: "Accueil", icon: Home },
+  { href: "/tableau-de-bord/missions", label: "Missions", icon: ClipboardList },
+  { href: "/tableau-de-bord/compte", label: "Mon compte", icon: UserRound },
+] as const;
+
+export function BottomNav({ role }: { role: "prestataire" | "recruteur" }) {
   const pathname = usePathname();
+  const LIENS = role === "recruteur" ? LIENS_RECRUTEUR : LIENS_PRESTATAIRE;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">

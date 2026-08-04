@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CalendarDays, MapPin, Wallet, Bell } from "lucide-react";
+import { CalendarDays, MapPin, Wallet, Bell, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getMissionsPrestataire } from "@/lib/missions";
+import { getMissionsPrestataire, getMissionsRecruteur } from "@/lib/missions";
 
 export const metadata: Metadata = {
   title: "Accueil — ProParJour",
@@ -18,9 +18,13 @@ export default async function AccueilPage() {
 
   const { data: profil } = await supabase
     .from("users")
-    .select("prenom")
+    .select("prenom, type")
     .eq("id", user.id)
     .maybeSingle();
+
+  if (profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier") {
+    return <AccueilRecruteur prenom={profil.prenom} userId={user.id} />;
+  }
 
   const lignes = await getMissionsPrestataire(user.id);
 
@@ -91,6 +95,87 @@ export default async function AccueilPage() {
           <p className="text-sm font-medium text-muted-foreground">Montant en attente</p>
           <p className="font-heading text-xl font-semibold text-foreground">
             {montantEnAttente.toFixed(2)} €
+          </p>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * Le prix est fixé par le prestataire sur son profil ; réserver et
+ * payer revient à accepter ce prix, comme un devis. La mission
+ * commence à la date prévue — il ne reste au prestataire qu'à
+ * confirmer sa disponibilité, jamais à renégocier un tarif. D'où le
+ * vocabulaire "en attente de confirmation" plutôt que "en attente de
+ * réponse" côté recruteur.
+ */
+async function AccueilRecruteur({ prenom, userId }: { prenom: string | null; userId: string }) {
+  const missions = await getMissionsRecruteur(userId);
+
+  const enAttente = missions.filter((m) => m.statut === "en_attente");
+  const aVenir = missions
+    .filter((m) => m.statut === "confirmee" || m.statut === "en_cours")
+    .sort((a, b) => a.date_mission.localeCompare(b.date_mission));
+  const prochaine = aVenir[0];
+
+  const debutMois = new Date();
+  debutMois.setDate(1);
+  const depensesMois = missions
+    .filter((m) => m.date_mission >= debutMois.toISOString().slice(0, 10) && m.statut !== "annulee")
+    .reduce((somme, m) => somme + m.montant_total, 0);
+
+  return (
+    <div className="space-y-4">
+      <h1 className="font-heading text-2xl font-semibold text-foreground">Bonjour {prenom || ""}</h1>
+
+      {enAttente.length > 0 && (
+        <Link
+          href="/tableau-de-bord/missions"
+          className="flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10"
+        >
+          <Clock className="size-6 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-medium text-foreground">
+              {enAttente.length === 1
+                ? "Une mission attend la confirmation du prestataire"
+                : `${enAttente.length} missions attendent une confirmation`}
+            </p>
+            <p className="text-sm text-muted-foreground">Touchez pour voir</p>
+          </div>
+        </Link>
+      )}
+
+      <Link
+        href="/tableau-de-bord/missions"
+        className="block rounded-2xl border border-border bg-background p-5 shadow-sm"
+      >
+        <p className="text-sm font-medium text-muted-foreground">Prochaine mission</p>
+        {prochaine ? (
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center gap-2 text-foreground">
+              <CalendarDays className="size-4 text-muted-foreground" />
+              {prochaine.date_mission}
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="size-4" />
+              {prochaine.lieu}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Aucune mission à venir pour l&apos;instant.</p>
+        )}
+      </Link>
+
+      <Link
+        href="/tableau-de-bord/missions"
+        className="flex items-center gap-3 rounded-2xl border border-border bg-background p-5 shadow-sm"
+      >
+        <Wallet className="size-6 shrink-0 text-primary" />
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Dépenses ce mois-ci</p>
+          <p className="font-heading text-xl font-semibold text-foreground">
+            {depensesMois.toFixed(2)} €
           </p>
         </div>
       </Link>
