@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   MissionLignesRow,
   MissionsRow,
   PaiementsRow,
+  PaiementStatutType,
 } from "@/lib/supabase/database.types";
 
 export type LigneAvecPrestataire = MissionLignesRow & {
@@ -114,8 +116,19 @@ export async function getMissionPourFacture(
 
 export type LigneProposee = MissionLignesRow & {
   mission: MissionsRow;
+  paiement: { statut: PaiementStatutType } | null;
 };
 
+/**
+ * La table `paiements` n'a pas de policy SELECT pour un prestataire
+ * (confidentialité financière — seul le recruteur voit le détail des
+ * montants/commission d'une mission, cf. Étape 5). Un prestataire a
+ * quand même besoin de savoir si SON paiement est séquestré ou
+ * débloqué : on relit uniquement le statut, via le client admin,
+ * mais seulement pour des mission_id déjà prouvés légitimes par la
+ * requête RLS précédente sur ses propres mission_lignes — jamais de
+ * montant ni de commission transmis au navigateur du prestataire.
+ */
 export async function getMissionsPrestataire(userId: string): Promise<LigneProposee[]> {
   const supabase = await createClient();
 
@@ -136,10 +149,19 @@ export async function getMissionsPrestataire(userId: string): Promise<LignePropo
   if (!lignes || lignes.length === 0) return [];
 
   const missionIds = [...new Set(lignes.map((l) => l.mission_id))];
-  const { data: missions } = await supabase.from("missions").select("*").in("id", missionIds);
+  const admin = createAdminClient();
+  const [{ data: missions }, { data: paiements }] = await Promise.all([
+    supabase.from("missions").select("*").in("id", missionIds),
+    admin.from("paiements").select("mission_id, statut").in("mission_id", missionIds),
+  ]);
   const parMission = new Map((missions ?? []).map((m) => [m.id, m]));
+  const paiementParMission = new Map((paiements ?? []).map((p) => [p.mission_id, { statut: p.statut }]));
 
   return lignes
     .filter((ligne) => parMission.has(ligne.mission_id))
-    .map((ligne) => ({ ...ligne, mission: parMission.get(ligne.mission_id)! }));
+    .map((ligne) => ({
+      ...ligne,
+      mission: parMission.get(ligne.mission_id)!,
+      paiement: paiementParMission.get(ligne.mission_id) ?? null,
+    }));
 }

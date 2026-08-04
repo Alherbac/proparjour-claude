@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
 import { creerNotification } from "@/lib/notifications";
+import { creerMessageSysteme } from "@/lib/messages";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -100,6 +101,16 @@ export async function repondreMissionLigne(
       titre: reponse === "acceptee" ? "Mission acceptée" : "Mission refusée",
       contenu: reponse === "acceptee" ? "Un prestataire a accepté votre mission." : "Un prestataire a refusé votre mission.",
       lien: `/missions/${ligne.mission_id}`,
+      missionId: ligne.mission_id,
+    });
+    await creerMessageSysteme({
+      missionId: ligne.mission_id,
+      expediteurId: user.id,
+      destinataireId: mission.recruteur_id,
+      contenu:
+        reponse === "acceptee"
+          ? "✅ A accepté cette mission."
+          : "❌ A refusé cette mission.",
     });
   }
 
@@ -188,13 +199,22 @@ export async function annulerMission(missionId: string): Promise<ActionResult> {
   const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
   await Promise.all(
     prestataireUserIds.map((userId) =>
-      creerNotification({
-        userId,
-        type: "mission_annulee",
-        titre: "Mission annulée",
-        contenu: `La mission du ${mission.date_mission} a été annulée par le recruteur.`,
-        lien: `/missions/${missionId}`,
-      }),
+      Promise.all([
+        creerNotification({
+          userId,
+          type: "mission_annulee",
+          titre: "Mission annulée",
+          contenu: `La mission du ${mission.date_mission} a été annulée par le recruteur.`,
+          lien: `/missions/${missionId}`,
+          missionId,
+        }),
+        creerMessageSysteme({
+          missionId,
+          expediteurId: user.id,
+          destinataireId: userId,
+          contenu: "❌ Le client a annulé cette mission.",
+        }),
+      ]),
     ),
   );
 
@@ -277,6 +297,13 @@ export async function declarerServiceFaitLigne(ligneId: string): Promise<ActionR
     titre: "Service fait déclaré",
     contenu: "Un prestataire a déclaré avoir effectué sa mission.",
     lien: `/missions/${ligne.mission_id}`,
+    missionId: ligne.mission_id,
+  });
+  await creerMessageSysteme({
+    missionId: ligne.mission_id,
+    expediteurId: user.id,
+    destinataireId: mission.recruteur_id,
+    contenu: "✅ A déclaré le service terminé.",
   });
 
   return { success: true };
@@ -333,13 +360,22 @@ export async function confirmerServiceFait(missionId: string): Promise<ActionRes
   const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
   await Promise.all(
     prestataireUserIds.map((userId) =>
-      creerNotification({
-        userId,
-        type: "paiement_libere",
-        titre: "Paiement débloqué",
-        contenu: "Le recruteur a confirmé le service fait, votre paiement a été débloqué.",
-        lien: `/missions/${missionId}`,
-      }),
+      Promise.all([
+        creerNotification({
+          userId,
+          type: "paiement_libere",
+          titre: "Paiement débloqué",
+          contenu: "Le recruteur a confirmé le service fait, votre paiement a été débloqué.",
+          lien: `/missions/${missionId}`,
+          missionId,
+        }),
+        creerMessageSysteme({
+          missionId,
+          expediteurId: user.id,
+          destinataireId: userId,
+          contenu: "✅ Le client a confirmé le service fait. Paiement débloqué.",
+        }),
+      ]),
     ),
   );
 
@@ -389,13 +425,22 @@ export async function contesterMission(missionId: string, motif: string): Promis
   const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
   await Promise.all(
     prestataireUserIds.map((userId) =>
-      creerNotification({
-        userId,
-        type: "litige",
-        titre: "Mission contestée",
-        contenu: "Le recruteur a contesté la réalisation de cette mission.",
-        lien: `/missions/${missionId}`,
-      }),
+      Promise.all([
+        creerNotification({
+          userId,
+          type: "litige",
+          titre: "Mission contestée",
+          contenu: "Le recruteur a contesté la réalisation de cette mission.",
+          lien: `/missions/${missionId}`,
+          missionId,
+        }),
+        creerMessageSysteme({
+          missionId,
+          expediteurId: user.id,
+          destinataireId: userId,
+          contenu: `⚠️ Le client conteste cette mission : ${motif.trim()}`,
+        }),
+      ]),
     ),
   );
 

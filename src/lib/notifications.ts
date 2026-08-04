@@ -25,6 +25,7 @@ export async function creerNotification(params: {
   titre: string;
   contenu?: string;
   lien?: string;
+  missionId?: string;
 }) {
   try {
     const admin = createAdminClient();
@@ -34,6 +35,7 @@ export async function creerNotification(params: {
       titre: params.titre,
       contenu: params.contenu ?? null,
       lien: params.lien ?? null,
+      mission_id: params.missionId ?? null,
     });
   } catch {
     // Volontairement ignoré — voir commentaire ci-dessus.

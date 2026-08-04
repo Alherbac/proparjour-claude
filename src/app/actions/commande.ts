@@ -6,6 +6,7 @@ import { getStripeClient, TAUX_COMMISSION_DEFAUT } from "@/lib/stripe/server";
 import { montantLigne, type Panier } from "@/lib/panier";
 import type { MetierType } from "@/lib/supabase/database.types";
 import { creerNotification } from "@/lib/notifications";
+import { creerMessageSysteme } from "@/lib/messages";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -190,6 +191,13 @@ export async function finaliserCommande(
       titre: "Nouvelle mission proposée",
       contenu: `${panier.lieu} — ${panier.dateMission}`,
       lien: `/missions/${missionId}`,
+      missionId,
+    });
+    await creerMessageSysteme({
+      missionId,
+      expediteurId: user.id,
+      destinataireId: profil.user_id,
+      contenu: `📅 Nouvelle mission proposée : ${panier.lieu}, le ${panier.dateMission}.`,
     });
   }
 

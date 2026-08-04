@@ -2,6 +2,34 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { MessagesRow } from "@/lib/supabase/database.types";
 
+/**
+ * Message système généré automatiquement par une action du cycle de
+ * vie de la mission (acceptation, refus, service fait, confirmation,
+ * litige, annulation) — injecté dans le fil de discussion concerné
+ * en plus de la notification, pour que l'historique de la mission
+ * soit visible directement dans la conversation. Best-effort comme
+ * creerNotification : ne doit jamais faire échouer l'action métier.
+ */
+export async function creerMessageSysteme(params: {
+  missionId: string;
+  expediteurId: string;
+  destinataireId: string;
+  contenu: string;
+}) {
+  try {
+    const admin = createAdminClient();
+    await admin.from("messages").insert({
+      mission_id: params.missionId,
+      expediteur_id: params.expediteurId,
+      destinataire_id: params.destinataireId,
+      contenu: params.contenu,
+      type: "systeme",
+    });
+  } catch {
+    // Volontairement ignoré — voir commentaire ci-dessus.
+  }
+}
+
 export type Participant = { userId: string; prenom: string | null; nom: string | null };
 
 export type ParticipantsMission = {
@@ -85,4 +113,29 @@ export async function getMessagesEntre(
     )
     .order("created_at", { ascending: true });
   return data ?? [];
+}
+
+/**
+ * Nombre de messages non lus adressés à l'utilisateur courant, par
+ * mission — pour afficher un badge sur la carte mission concernée
+ * plutôt qu'une simple cloche générique.
+ */
+export async function getMessagesNonLusParMission(): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return {};
+
+  const { data } = await supabase
+    .from("messages")
+    .select("mission_id")
+    .eq("destinataire_id", user.id)
+    .eq("lu", false);
+
+  const compte: Record<string, number> = {};
+  for (const row of data ?? []) {
+    compte[row.mission_id] = (compte[row.mission_id] ?? 0) + 1;
+  }
+  return compte;
 }

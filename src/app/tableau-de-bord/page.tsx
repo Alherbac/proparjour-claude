@@ -1,19 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, MapPin, Phone, CalendarDays, FileDown, MessageCircle } from "lucide-react";
+import { Mail, MapPin, CalendarDays, FileDown, MessageCircle } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { NotificationBell } from "@/components/layout/notification-bell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/app/actions/auth";
-import { METIERS } from "@/config/metiers";
-import { getMissionsRecruteur, getMissionsPrestataire } from "@/lib/missions";
+import { getMissionsRecruteur } from "@/lib/missions";
 import { getNotifications } from "@/lib/notifications";
-import { ReponseMissionButtons } from "@/components/missions/reponse-mission-buttons";
 import { AnnulerMissionButton } from "@/components/missions/annuler-mission-button";
-import { DeclarerServiceFaitButton } from "@/components/missions/declarer-service-fait-button";
 import { ConfirmerOuContester } from "@/components/missions/confirmer-ou-contester";
 import { cn } from "@/lib/utils";
 
@@ -26,16 +22,9 @@ export const metadata: Metadata = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  prestataire: "Prestataire",
   recruteur_entreprise: "Recruteur — Entreprise",
   recruteur_particulier: "Recruteur — Particulier",
   admin: "Administrateur",
-};
-
-const STATUT_VERIFICATION_LABELS: Record<string, string> = {
-  en_attente: "Vérification en attente",
-  valide: "Profil vérifié",
-  refuse: "Profil refusé",
 };
 
 const MISSION_STATUT_LABELS: Record<string, string> = {
@@ -62,6 +51,12 @@ const LIGNE_STATUT_LABELS: Record<string, string> = {
   refusee: "Refusée",
 };
 
+/**
+ * Tableau de bord recruteur — pas encore restructuré en miroir du
+ * nouveau parcours prestataire (Accueil / Missions / Argent / Compte),
+ * c'est la prochaine étape. Un prestataire n'atteint jamais cette
+ * page : le layout parent le redirige vers /tableau-de-bord/accueil.
+ */
 export default async function TableauDeBordPage() {
   const supabase = await createClient();
   const {
@@ -78,21 +73,17 @@ export default async function TableauDeBordPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  const [{ data: prestataireProfil }, { data: entreprise }] = await Promise.all([
-    profil?.type === "prestataire"
-      ? supabase.from("prestataires_profils").select("*").eq("user_id", user.id).maybeSingle()
-      : Promise.resolve({ data: null }),
+  if (profil?.type === "prestataire") {
+    redirect("/tableau-de-bord/accueil");
+  }
+
+  const { data: entreprise } =
     profil?.type === "recruteur_entreprise"
-      ? supabase.from("entreprises").select("*").eq("user_id", user.id).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+      ? await supabase.from("entreprises").select("*").eq("user_id", user.id).maybeSingle()
+      : { data: null };
 
-  const estRecruteur = profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier";
-  const missionsRecruteur = estRecruteur ? await getMissionsRecruteur(user.id) : [];
-  const missionsPrestataire = profil?.type === "prestataire" ? await getMissionsPrestataire(user.id) : [];
+  const missionsRecruteur = await getMissionsRecruteur(user.id);
   const notifications = await getNotifications();
-
-  const metier = METIERS.find((m) => m.id === prestataireProfil?.metier);
 
   return (
     <div className="min-h-full bg-secondary/30">
@@ -121,11 +112,6 @@ export default async function TableauDeBordPage() {
                 {profil?.type ? TYPE_LABELS[profil.type] : "Profil incomplet"}
               </p>
             </div>
-            {prestataireProfil && (
-              <Badge variant="secondary" className="font-normal">
-                {STATUT_VERIFICATION_LABELS[prestataireProfil.statut_verification]}
-              </Badge>
-            )}
           </div>
 
           <div className="mt-6 grid gap-3 border-t border-border pt-6 sm:grid-cols-2">
@@ -133,40 +119,13 @@ export default async function TableauDeBordPage() {
               <Mail className="size-4 text-muted-foreground" />
               {user.email}
             </div>
-            {profil?.telephone && (
-              <div className="flex items-center gap-2 text-sm text-foreground">
-                <Phone className="size-4 text-muted-foreground" />
-                {profil.telephone}
-              </div>
-            )}
-            {(profil?.ville || prestataireProfil?.ville) && (
+            {profil?.ville && (
               <div className="flex items-center gap-2 text-sm text-foreground">
                 <MapPin className="size-4 text-muted-foreground" />
-                {profil?.ville || prestataireProfil?.ville}
+                {profil.ville}
               </div>
             )}
           </div>
-
-          {prestataireProfil && (
-            <div className="mt-6 space-y-3 border-t border-border pt-6">
-              <p className="text-sm font-medium text-foreground">
-                Métier : {metier?.label ?? prestataireProfil.metier}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Tarif : {prestataireProfil.tarif_montant} €{" "}
-                {prestataireProfil.tarif_type === "horaire" ? "/ heure" : "/ jour"}
-              </p>
-              {prestataireProfil.specialites.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {prestataireProfil.specialites.map((specialite) => (
-                    <Badge key={specialite} variant="secondary" className="font-normal">
-                      {specialite}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {entreprise && (
             <div className="mt-6 space-y-1 border-t border-border pt-6">
@@ -180,150 +139,92 @@ export default async function TableauDeBordPage() {
           )}
         </div>
 
-        {estRecruteur && (
-          <div className="mt-8">
-            <h2 className="font-heading text-xl font-semibold text-foreground">
-              Mes missions
-            </h2>
-            {missionsRecruteur.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                Aucune mission pour l&apos;instant — réservez un prestataire pour en créer une.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-4">
-                {missionsRecruteur.map((mission) => (
-                  <li
-                    key={mission.id}
-                    className="rounded-2xl border border-border bg-background p-5 shadow-sm"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm text-foreground">
-                        <CalendarDays className="size-4 text-muted-foreground" />
-                        {mission.date_mission} · {mission.lieu}
-                      </div>
-                      <span
-                        className={cn(
-                          "rounded-full px-3 py-1 text-xs font-medium",
-                          MISSION_STATUT_STYLES[mission.statut],
-                        )}
+        <div className="mt-8">
+          <h2 className="font-heading text-xl font-semibold text-foreground">
+            Mes missions
+          </h2>
+          {missionsRecruteur.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Aucune mission pour l&apos;instant — réservez un prestataire pour en créer une.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-4">
+              {missionsRecruteur.map((mission) => (
+                <li
+                  key={mission.id}
+                  className="rounded-2xl border border-border bg-background p-5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm text-foreground">
+                      <CalendarDays className="size-4 text-muted-foreground" />
+                      {mission.date_mission} · {mission.lieu}
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium",
+                        MISSION_STATUT_STYLES[mission.statut],
+                      )}
+                    >
+                      {MISSION_STATUT_LABELS[mission.statut]}
+                    </span>
+                  </div>
+                  <ul className="mt-3 space-y-1.5">
+                    {mission.lignes.map((ligne) => (
+                      <li
+                        key={ligne.id}
+                        className="flex items-center justify-between text-sm text-muted-foreground"
                       >
-                        {MISSION_STATUT_LABELS[mission.statut]}
-                      </span>
-                    </div>
-                    <ul className="mt-3 space-y-1.5">
-                      {mission.lignes.map((ligne) => (
-                        <li
-                          key={ligne.id}
-                          className="flex items-center justify-between text-sm text-muted-foreground"
-                        >
-                          <span>
-                            {ligne.prenom} {ligne.nom} · {ligne.heure_debut}–{ligne.heure_fin}
-                          </span>
-                          <span>{LIGNE_STATUT_LABELS[ligne.statut_acceptation]}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
-                      <span className="text-muted-foreground">
-                        Paiement : {mission.paiement?.statut === "sequestre" ? "séquestré" : mission.paiement?.statut}
-                      </span>
-                      <span className="font-semibold text-foreground">{mission.montant_total} €</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-4">
-                        <Link
-                          href={`/missions/${mission.id}`}
-                          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                        >
-                          <MessageCircle className="size-3.5" />
-                          Voir la conversation
-                        </Link>
-                        {mission.paiement && STATUTS_FACTURABLES.includes(mission.paiement.statut) && (
-                          <Link
-                            href={`/api/factures/${mission.id}`}
-                            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                          >
-                            <FileDown className="size-3.5" />
-                            Télécharger la facture
-                          </Link>
-                        )}
-                      </div>
-                      {STATUTS_ANNULABLES.includes(mission.statut) && (
-                        <AnnulerMissionButton missionId={mission.id} />
-                      )}
-                    </div>
-                    {STATUTS_CLOTURABLES.includes(mission.statut) && (
-                      <div className="mt-3 flex justify-end border-t border-border pt-3">
-                        <ConfirmerOuContester missionId={mission.id} />
-                      </div>
-                    )}
-                    {mission.statut === "litige" && mission.motif_litige && (
-                      <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                        Litige : {mission.motif_litige}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {profil?.type === "prestataire" && (
-          <div className="mt-8">
-            <h2 className="font-heading text-xl font-semibold text-foreground">
-              Missions proposées
-            </h2>
-            {missionsPrestataire.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                Aucune mission proposée pour l&apos;instant.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-4">
-                {missionsPrestataire.map((ligne) => (
-                  <li
-                    key={ligne.id}
-                    className="rounded-2xl border border-border bg-background p-5 shadow-sm"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm text-foreground">
-                        <CalendarDays className="size-4 text-muted-foreground" />
-                        {ligne.mission.date_mission} · {ligne.mission.lieu}
-                      </div>
-                      <span className="text-sm font-medium text-foreground">
-                        {ligne.heure_debut}–{ligne.heure_fin} · {ligne.tarif_applique} €
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                      <span className="text-sm text-muted-foreground">
-                        {ligne.service_fait
-                          ? "Service fait déclaré"
-                          : LIGNE_STATUT_LABELS[ligne.statut_acceptation]}
-                      </span>
-                      {ligne.statut_acceptation === "en_attente" && (
-                        <ReponseMissionButtons ligneId={ligne.id} />
-                      )}
-                      {ligne.statut_acceptation === "acceptee" &&
-                        !ligne.service_fait &&
-                        STATUTS_CLOTURABLES.includes(ligne.mission.statut) && (
-                          <DeclarerServiceFaitButton ligneId={ligne.id} />
-                        )}
-                    </div>
-                    <div className="mt-3 border-t border-border pt-3">
+                        <span>
+                          {ligne.prenom} {ligne.nom} · {ligne.heure_debut}–{ligne.heure_fin}
+                        </span>
+                        <span>{LIGNE_STATUT_LABELS[ligne.statut_acceptation]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
+                    <span className="text-muted-foreground">
+                      Paiement : {mission.paiement?.statut === "sequestre" ? "séquestré" : mission.paiement?.statut}
+                    </span>
+                    <span className="font-semibold text-foreground">{mission.montant_total} €</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-4">
                       <Link
-                        href={`/missions/${ligne.mission_id}`}
+                        href={`/missions/${mission.id}`}
                         className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                       >
                         <MessageCircle className="size-3.5" />
                         Voir la conversation
                       </Link>
+                      {mission.paiement && STATUTS_FACTURABLES.includes(mission.paiement.statut) && (
+                        <Link
+                          href={`/api/factures/${mission.id}`}
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                        >
+                          <FileDown className="size-3.5" />
+                          Télécharger la facture
+                        </Link>
+                      )}
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+                    {STATUTS_ANNULABLES.includes(mission.statut) && (
+                      <AnnulerMissionButton missionId={mission.id} />
+                    )}
+                  </div>
+                  {STATUTS_CLOTURABLES.includes(mission.statut) && (
+                    <div className="mt-3 flex justify-end border-t border-border pt-3">
+                      <ConfirmerOuContester missionId={mission.id} />
+                    </div>
+                  )}
+                  {mission.statut === "litige" && mission.motif_litige && (
+                    <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      Litige : {mission.motif_litige}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -29,6 +29,8 @@ export type MissionStatutType =
 
 export type LigneStatutType = "en_attente" | "acceptee" | "refusee";
 
+export type MessageType = "texte" | "systeme";
+
 export type PaiementStatutType =
   | "en_attente"
   | "sequestre"
@@ -77,6 +79,7 @@ export type PrestatairesProfilsRow = {
   photo_url: string | null;
   statut_verification: StatutVerificationType;
   motif_refus: string | null;
+  visible: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -134,6 +137,7 @@ export type NotificationsRow = {
   titre: string;
   contenu: string | null;
   lien: string | null;
+  mission_id: string | null;
   lu: boolean;
   created_at: string;
 };
@@ -144,6 +148,7 @@ export type MessagesRow = {
   expediteur_id: string;
   destinataire_id: string;
   contenu: string;
+  type: MessageType;
   lu: boolean;
   created_at: string;
 };
@@ -188,11 +193,12 @@ export type Database = {
           | "motif_refus"
           | "bio"
           | "photo_url"
+          | "visible"
         > &
           Partial<
             Pick<
               PrestatairesProfilsRow,
-              "id" | "statut_verification" | "motif_refus" | "bio" | "photo_url"
+              "id" | "statut_verification" | "motif_refus" | "bio" | "photo_url" | "visible"
             >
           >;
         Update: Partial<PrestatairesProfilsRow>;
@@ -229,14 +235,15 @@ export type Database = {
       };
       messages: {
         Row: MessagesRow;
-        Insert: Omit<MessagesRow, "id" | "created_at" | "lu"> & Partial<Pick<MessagesRow, "id" | "lu">>;
+        Insert: Omit<MessagesRow, "id" | "created_at" | "lu" | "type"> &
+          Partial<Pick<MessagesRow, "id" | "lu" | "type">>;
         Update: Partial<MessagesRow>;
         Relationships: [];
       };
       notifications: {
         Row: NotificationsRow;
-        Insert: Omit<NotificationsRow, "id" | "created_at" | "lu"> &
-          Partial<Pick<NotificationsRow, "id" | "lu">>;
+        Insert: Omit<NotificationsRow, "id" | "created_at" | "lu" | "mission_id"> &
+          Partial<Pick<NotificationsRow, "id" | "lu" | "mission_id">>;
         Update: Partial<NotificationsRow>;
         Relationships: [];
       };

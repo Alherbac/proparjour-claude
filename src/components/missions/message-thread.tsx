@@ -74,19 +74,28 @@ export function MessageThread({
         {messages.length === 0 && (
           <p className="text-sm text-muted-foreground">Aucun message pour l&apos;instant.</p>
         )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={cn(
-              "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
-              m.expediteur_id === moiId
-                ? "ml-auto bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground",
-            )}
-          >
-            {m.contenu}
-          </div>
-        ))}
+        {messages.map((m) =>
+          m.type === "systeme" ? (
+            <p
+              key={m.id}
+              className="mx-auto max-w-[85%] rounded-full bg-secondary px-3 py-1.5 text-center text-xs text-muted-foreground"
+            >
+              {m.contenu}
+            </p>
+          ) : (
+            <div
+              key={m.id}
+              className={cn(
+                "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
+                m.expediteur_id === moiId
+                  ? "ml-auto bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground",
+              )}
+            >
+              {m.contenu}
+            </div>
+          ),
+        )}
         <div ref={finRef} />
       </div>
       <div className="flex items-center gap-2 border-t border-border p-3">
