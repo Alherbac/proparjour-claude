@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { creerNotification } from "@/lib/notifications";
+import { getMessagesNonLusPourMission } from "@/lib/messages";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -89,7 +90,17 @@ export async function envoyerMessage(
     titre: "Nouveau message",
     contenu: texte.length > 80 ? `${texte.slice(0, 80)}…` : texte,
     lien: `/missions/${missionId}`,
+    missionId,
   });
 
   return { success: true };
+}
+
+/**
+ * Synchronisation temps réel (Phase 3) : rafraîchit uniquement le
+ * badge 💬 d'une mission à la réception d'une notification
+ * "nouveau_message", sans refetch de toute la liste.
+ */
+export async function rafraichirMessagesNonLus(missionId: string): Promise<number> {
+  return getMessagesNonLusPourMission(missionId);
 }

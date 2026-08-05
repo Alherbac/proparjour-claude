@@ -5,6 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
 import { creerNotification } from "@/lib/notifications";
 import { creerMessageSysteme } from "@/lib/messages";
+import {
+  getLigneMissionPrestataire,
+  getMissionPourFacture,
+  type LigneProposee,
+  type MissionAvecLignes,
+} from "@/lib/missions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -445,4 +451,26 @@ export async function contesterMission(missionId: string, motif: string): Promis
   );
 
   return { success: true };
+}
+
+/**
+ * Synchronisation temps réel (Phase 3) : appelées par les tableaux
+ * de bord client quand une notification liée à une mission arrive
+ * sur le canal Realtime déjà en place, pour ne rafraîchir que la
+ * carte concernée — jamais toute la liste. Chacune s'appuie sur la
+ * RLS (via le client session dans les fonctions lib appelées) :
+ * impossible de récupérer la mission d'un autre utilisateur en
+ * passant un id arbitraire.
+ */
+export async function rafraichirLignePrestataire(missionId: string): Promise<LigneProposee | null> {
+  const supabaseServer = await createClient();
+  const {
+    data: { user },
+  } = await supabaseServer.auth.getUser();
+  if (!user) return null;
+  return getLigneMissionPrestataire(user.id, missionId);
+}
+
+export async function rafraichirMissionRecruteur(missionId: string): Promise<MissionAvecLignes | null> {
+  return getMissionPourFacture(missionId);
 }

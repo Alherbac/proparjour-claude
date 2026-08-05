@@ -1,17 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
 import { List, CalendarRange } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MissionCardPrestataire } from "@/components/dashboard/mission-card-prestataire";
 import { CalendrierMissions } from "@/components/dashboard/calendrier-missions";
+import { useNotificationsRealtime } from "@/hooks/use-notifications-realtime";
+import { rafraichirLignePrestataire } from "@/app/actions/missions";
+import { rafraichirMessagesNonLus } from "@/app/actions/messages";
 import type { LigneProposee } from "@/lib/missions";
+import type { NotificationsRow } from "@/lib/supabase/database.types";
 
 const GROUPES = [
   { cle: "a_repondre", label: "À répondre" },
   { cle: "a_venir", label: "À venir" },
   { cle: "terminees", label: "Terminées" },
 ] as const;
+
+const TYPES_MISSION_MISE_A_JOUR = [
+  "mission_acceptee",
+  "mission_refusee",
+  "mission_annulee",
+  "service_fait_declare",
+  "paiement_libere",
+  "litige",
+];
 
 function groupe(ligne: LigneProposee): (typeof GROUPES)[number]["cle"] {
   if (ligne.statut_acceptation === "en_attente") return "a_repondre";
@@ -25,14 +39,60 @@ function groupe(ligne: LigneProposee): (typeof GROUPES)[number]["cle"] {
 }
 
 export function MissionsScreen({
-  lignes,
-  messagesNonLusParMission,
+  userId,
+  lignes: lignesInitiales,
+  messagesNonLusParMission: messagesInitiaux,
 }: {
+  userId: string;
   lignes: LigneProposee[];
   messagesNonLusParMission: Record<string, number>;
 }) {
+  const router = useRouter();
   const [vue, setVue] = useState<"liste" | "calendrier">("liste");
   const [ongletActif, setOngletActif] = useState<(typeof GROUPES)[number]["cle"]>("a_repondre");
+  const [lignes, setLignes] = useState(lignesInitiales);
+  const [messagesNonLusParMission, setMessagesNonLusParMission] = useState(messagesInitiaux);
+
+  // Resynchronise l'état local quand le serveur repasse des props
+  // fraîches (ex. router.refresh() après une action) — motif
+  // recommandé par React pour ajuster l'état pendant le rendu plutôt
+  // que dans un effet.
+  const [lignesPrecedentes, setLignesPrecedentes] = useState(lignesInitiales);
+  if (lignesInitiales !== lignesPrecedentes) {
+    setLignesPrecedentes(lignesInitiales);
+    setLignes(lignesInitiales);
+  }
+  const [messagesPrecedents, setMessagesPrecedents] = useState(messagesInitiaux);
+  if (messagesInitiaux !== messagesPrecedents) {
+    setMessagesPrecedents(messagesInitiaux);
+    setMessagesNonLusParMission(messagesInitiaux);
+  }
+
+  const surNotification = useCallback(
+    async (notification: NotificationsRow) => {
+      if (!notification.mission_id) return;
+
+      if (notification.type === "nouveau_message") {
+        const compte = await rafraichirMessagesNonLus(notification.mission_id);
+        setMessagesNonLusParMission((prev) => ({ ...prev, [notification.mission_id!]: compte }));
+        return;
+      }
+
+      if (notification.type === "mission_proposee") {
+        router.refresh();
+        return;
+      }
+
+      if (TYPES_MISSION_MISE_A_JOUR.includes(notification.type)) {
+        const fraiche = await rafraichirLignePrestataire(notification.mission_id);
+        if (!fraiche) return;
+        setLignes((prev) => prev.map((l) => (l.mission_id === fraiche.mission_id ? fraiche : l)));
+      }
+    },
+    [router],
+  );
+
+  useNotificationsRealtime(userId, surNotification);
 
   const parGroupe = GROUPES.map((g) => ({
     ...g,

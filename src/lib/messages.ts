@@ -139,3 +139,24 @@ export async function getMessagesNonLusParMission(): Promise<Record<string, numb
   }
   return compte;
 }
+
+/**
+ * Même chose que getMessagesNonLusParMission, mais pour une seule
+ * mission — utilisé par la synchronisation temps réel (Phase 3).
+ */
+export async function getMessagesNonLusPourMission(missionId: string): Promise<number> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const { count } = await supabase
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("mission_id", missionId)
+    .eq("destinataire_id", user.id)
+    .eq("lu", false);
+
+  return count ?? 0;
+}

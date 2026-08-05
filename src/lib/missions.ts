@@ -165,3 +165,40 @@ export async function getMissionsPrestataire(userId: string): Promise<LignePropo
       paiement: paiementParMission.get(ligne.mission_id) ?? null,
     }));
 }
+
+/**
+ * Même chose que getMissionsPrestataire, mais pour une seule mission
+ * — utilisé par la synchronisation temps réel (Phase 3) : à la
+ * réception d'une notification liée à une mission, on ne re-fetch
+ * que cette carte-là, jamais la liste entière.
+ */
+export async function getLigneMissionPrestataire(
+  userId: string,
+  missionId: string,
+): Promise<LigneProposee | null> {
+  const supabase = await createClient();
+
+  const { data: profil } = await supabase
+    .from("prestataires_profils")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!profil) return null;
+
+  const { data: ligne } = await supabase
+    .from("mission_lignes")
+    .select("*")
+    .eq("prestataire_id", profil.id)
+    .eq("mission_id", missionId)
+    .maybeSingle();
+  if (!ligne) return null;
+
+  const admin = createAdminClient();
+  const [{ data: mission }, { data: paiement }] = await Promise.all([
+    supabase.from("missions").select("*").eq("id", missionId).maybeSingle(),
+    admin.from("paiements").select("statut").eq("mission_id", missionId).maybeSingle(),
+  ]);
+  if (!mission) return null;
+
+  return { ...ligne, mission, paiement: paiement ? { statut: paiement.statut } : null };
+}

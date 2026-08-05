@@ -23,9 +23,15 @@ export default async function MissionsPage() {
 
   if (estRecruteur) {
     const missions = await getMissionsRecruteur(user.id);
-    return <MissionsScreenRecruteur missions={missions} messagesNonLusParMission={messagesNonLusParMission} />;
+    return (
+      <MissionsScreenRecruteur
+        userId={user.id}
+        missions={missions}
+        messagesNonLusParMission={messagesNonLusParMission}
+      />
+    );
   }
 
   const lignes = await getMissionsPrestataire(user.id);
-  return <MissionsScreen lignes={lignes} messagesNonLusParMission={messagesNonLusParMission} />;
+  return <MissionsScreen userId={user.id} lignes={lignes} messagesNonLusParMission={messagesNonLusParMission} />;
 }
