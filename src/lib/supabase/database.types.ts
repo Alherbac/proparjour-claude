@@ -38,6 +38,8 @@ export type PaiementStatutType =
   | "rembourse"
   | "echec";
 
+export type AdminRole = "admin" | "moderator";
+
 export type UsersRow = {
   id: string;
   type: UserType | null;
@@ -166,6 +168,13 @@ export type PaiementsRow = {
   updated_at: string;
 };
 
+export type UserRolesRow = {
+  user_id: string;
+  role: AdminRole;
+  granted_by: string | null;
+  granted_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -247,6 +256,13 @@ export type Database = {
         Update: Partial<NotificationsRow>;
         Relationships: [];
       };
+      user_roles: {
+        Row: UserRolesRow;
+        Insert: Omit<UserRolesRow, "granted_at" | "granted_by"> &
+          Partial<Pick<UserRolesRow, "granted_at" | "granted_by">>;
+        Update: Partial<UserRolesRow>;
+        Relationships: [];
+      };
     };
     Views: {
       prestataires_publics: {
@@ -273,6 +289,10 @@ export type Database = {
           p_stripe_payment_intent_id: string;
         };
         Returns: string;
+      };
+      has_role: {
+        Args: { check_role: AdminRole };
+        Returns: boolean;
       };
     };
   };
