@@ -35,6 +35,7 @@ export const prestataireSchema = z
     metier: z.enum(["securite", "accueil", "vente"], {
       error: "Sélectionnez un métier",
     }),
+    titre: z.string().trim().min(1, "Indiquez votre titre professionnel"),
 
     numeroCarteCnaps: z.string().trim().optional(),
     certifications: z.array(z.string()),
@@ -53,8 +54,8 @@ export const prestataireSchema = z
       error: "Sélectionnez un type de tarif",
     }),
     tarifMontant: z
-      .number({ error: "Indiquez un tarif" })
-      .positive("Indiquez un tarif supérieur à 0"),
+      .number({ error: "Indiquez votre tarif horaire" })
+      .positive("Indiquez un tarif horaire supérieur à 0"),
     disponibilites: z
       .array(z.string())
       .min(1, "Sélectionnez au moins un jour de disponibilité"),
@@ -67,10 +68,14 @@ export const prestataireSchema = z
 export type PrestataireFormValues = z.infer<typeof prestataireSchema>;
 
 export const PRESTATAIRE_DEFAULT_VALUES: Partial<PrestataireFormValues> = {
+  ville: "",
   certifications: [],
   langues: [],
   specialites: [],
   remunerationCommission: false,
   disponibilites: [],
-  tarifType: "journalier",
+  // Le tarif horaire est désormais obligatoire à l'inscription — le
+  // tarif journalier affiché publiquement en est dérivé (voir
+  // lib/tarif.ts) plutôt que saisi séparément.
+  tarifType: "horaire",
 };

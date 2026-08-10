@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ShoppingCart, MapPin, CalendarDays, Clock } from "lucide-react";
+import { Send, UserPlus, MapPin, CalendarDays, Clock, Euro, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/onboarding/form-field";
-import { ajouterLigne, lirePanier } from "@/lib/panier";
+import { AdresseAutocomplete } from "@/components/adresse-autocomplete";
+import { ajouterLigne } from "@/lib/panier";
+import { usePanier } from "@/hooks/use-panier";
+import { tarifJournalierAffiche, tarifHoraireReference } from "@/lib/tarif";
 import type { MetierId } from "@/config/metiers";
 import type { TarifType } from "@/lib/supabase/database.types";
 
@@ -17,60 +22,80 @@ type BookingCardFreelance = {
   ville: string;
   tarifMontant: number;
   tarifType: TarifType;
+  photoUrl: string | null;
 };
 
 export function BookingCard({ freelance }: { freelance: BookingCardFreelance }) {
+  const router = useRouter();
+  const panier = usePanier();
+  const panierEnCours = panier.lignes.length > 0;
+  const tarifReference = tarifHoraireReference(freelance.tarifMontant, freelance.tarifType);
   const [dateMission, setDateMission] = useState("");
-  const [lieu, setLieu] = useState(freelance.ville);
-  const [heureDebut, setHeureDebut] = useState(
-    freelance.tarifType === "horaire" ? "09:00" : "08:00",
-  );
-  const [heureFin, setHeureFin] = useState(
-    freelance.tarifType === "horaire" ? "17:00" : "18:00",
-  );
+  const [adresse, setAdresse] = useState(freelance.ville);
+  const [description, setDescription] = useState("");
+  const [heureDebut, setHeureDebut] = useState("09:00");
+  const [heureFin, setHeureFin] = useState("17:00");
+  const [tarifHoraireOffert, setTarifHoraireOffert] = useState(String(tarifReference));
+  const [avertissementTarif, setAvertissementTarif] = useState(false);
+  const avertissementTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function handleAjouter() {
-    // Si un panier est déjà en cours (autre prestataire ajouté depuis
-    // une autre fiche), on réutilise son lieu/date par défaut — une
-    // mission = un seul événement (voir cahier des charges section 7).
-    const panierExistant = lirePanier();
-    const dateFinale = dateMission || panierExistant.dateMission;
-    const lieuFinal = lieu.trim() || panierExistant.lieu;
+  function verifierTarif() {
+    const valeur = Number(tarifHoraireOffert);
+    if (valeur > 0 && valeur < tarifReference) {
+      setAvertissementTarif(true);
+      if (avertissementTimeout.current) clearTimeout(avertissementTimeout.current);
+      avertissementTimeout.current = setTimeout(() => setAvertissementTarif(false), 3000);
+    }
+  }
 
-    if (!dateFinale || !lieuFinal) {
-      toast.error("Indiquez la date et le lieu de la mission.");
-      return;
+  function validerEtAjouter(): boolean {
+    const tarifHoraire = Number(tarifHoraireOffert);
+    if (!dateMission || !adresse.trim()) {
+      toast.error("Indiquez la date et l'adresse de la mission.");
+      return false;
     }
     if (heureFin === heureDebut) {
       toast.error("L'heure de fin doit être différente de l'heure de début.");
-      return;
+      return false;
+    }
+    if (!tarifHoraire || tarifHoraire <= 0) {
+      toast.error("Indiquez un tarif horaire supérieur à 0.");
+      return false;
     }
 
-    ajouterLigne(
-      {
-        prestataireId: freelance.id,
-        prenom: freelance.prenom,
-        metier: freelance.metier,
-        tarifMontant: freelance.tarifMontant,
-        tarifType: freelance.tarifType,
-        heureDebut,
-        heureFin,
-      },
-      { lieu: lieuFinal, dateMission: dateFinale },
-    );
+    ajouterLigne({
+      prestataireId: freelance.id,
+      prenom: freelance.prenom,
+      metier: freelance.metier,
+      tarifMontant: tarifHoraire,
+      tarifType: "horaire",
+      heureDebut,
+      heureFin,
+      photoUrl: freelance.photoUrl,
+      date: dateMission,
+      adresse: adresse.trim(),
+      description: description.trim(),
+    });
 
-    toast.success(`${freelance.prenom} a été ajouté(e) au panier.`);
+    toast.success(`${freelance.prenom} a été ajouté(e) à votre mission.`);
+    return true;
+  }
+
+  function handleProposerSeul() {
+    if (validerEtAjouter()) router.push("/panier");
+  }
+
+  function handleAjouterEtContinuer() {
+    if (validerEtAjouter()) router.push("/prestataires");
   }
 
   return (
     <div className="rounded-2xl border border-border bg-background p-6 shadow-sm">
       <div className="flex items-baseline gap-1">
         <span className="font-heading text-3xl font-semibold text-foreground">
-          {freelance.tarifMontant} €
+          {tarifJournalierAffiche(freelance.tarifMontant, freelance.tarifType)} €
         </span>
-        <span className="text-sm text-muted-foreground">
-          / {freelance.tarifType === "horaire" ? "heure" : "jour"}
-        </span>
+        <span className="text-sm text-muted-foreground">/ jour</span>
       </div>
 
       <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -115,15 +140,63 @@ export function BookingCard({ freelance }: { freelance: BookingCardFreelance }) 
           </FormField>
         </div>
 
-        <FormField label="Lieu de la mission" htmlFor="lieu">
-          <Input id="lieu" value={lieu} onChange={(e) => setLieu(e.target.value)} />
+        <FormField
+          label="Tarif horaire que vous proposez (€)"
+          htmlFor="tarifHoraireOffert"
+          hint={`Tarif de référence de ${freelance.prenom} : ${tarifReference} € / heure.`}
+        >
+          <div className="relative">
+            <Euro className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="tarifHoraireOffert"
+              type="number"
+              min={0}
+              step="0.5"
+              className="pl-8"
+              value={tarifHoraireOffert}
+              onChange={(e) => setTarifHoraireOffert(e.target.value)}
+              onBlur={verifierTarif}
+            />
+          </div>
+          {avertissementTarif && (
+            <p className="mt-1.5 flex items-start gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              Ce tarif est plus bas que le tarif horaire indiqué par {freelance.prenom} (
+              {tarifReference} € / heure).
+            </p>
+          )}
+        </FormField>
+
+        <FormField label="Adresse exacte de la mission" htmlFor="adresse">
+          <AdresseAutocomplete
+            id="adresse"
+            value={adresse}
+            onChange={setAdresse}
+            placeholder="Numéro, rue, ville..."
+          />
+        </FormField>
+
+        <FormField label="Description de la mission (optionnel)" htmlFor="description">
+          <Textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Détaillez le contexte, les consignes particulières..."
+            rows={3}
+          />
         </FormField>
       </div>
 
-      <Button className="mt-5 w-full rounded-full" onClick={handleAjouter}>
-        <ShoppingCart className="size-4" />
-        Ajouter au panier
-      </Button>
+      <div className="mt-5 space-y-2">
+        <Button className="w-full rounded-full" onClick={handleProposerSeul}>
+          <Send className="size-4" />
+          Proposer à {freelance.prenom}
+        </Button>
+        <Button variant="outline" className="w-full rounded-full" onClick={handleAjouterEtContinuer}>
+          <UserPlus className="size-4" />
+          {panierEnCours ? "Ajouter au panier existant" : "Ajouter d'autres prestataires à la mission"}
+        </Button>
+      </div>
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
         Aucun engagement — annulation gratuite jusqu&apos;à 48h avant la mission.

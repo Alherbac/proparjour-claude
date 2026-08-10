@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SearchX } from "lucide-react";
+import { Search, MapPin, SearchX, Send } from "lucide-react";
 import { METIERS, type MetierId } from "@/config/metiers";
-import { JOURS_SEMAINE } from "@/components/onboarding/prestataire/schema";
 import { rechercherPrestataires } from "@/lib/recherche";
-import { PrestataireResultCard } from "@/components/prestataire/prestataire-result-card";
-import { FormField } from "@/components/onboarding/form-field";
-import { Input } from "@/components/ui/input";
+import { ResultatsPrestataires } from "@/components/prestataire/resultats-prestataires";
+import { StickySearchShell } from "@/components/prestataire/sticky-search-shell";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -43,35 +41,22 @@ export default async function RecherchePrestatairesPage({
     ? (metierParam as MetierId)
     : undefined;
   const ville = get("ville");
-  const jour = get("jour");
   const q = get("q");
-  const tarifMinRaw = get("tarifMin");
-  const tarifMaxRaw = get("tarifMax");
   const page = Number(get("page") ?? "1") || 1;
 
-  const { resultats, total, totalPages } = await rechercherPrestataires({
+  const { resultats, total, totalPages, enMissionIds } = await rechercherPrestataires({
     metier,
     ville,
-    jour,
     q,
-    tarifMin: tarifMinRaw ? Number(tarifMinRaw) : undefined,
-    tarifMax: tarifMaxRaw ? Number(tarifMaxRaw) : undefined,
     page,
   });
 
-  const currentParams: Params = {
-    metier,
-    ville,
-    jour,
-    q,
-    tarifMin: tarifMinRaw,
-    tarifMax: tarifMaxRaw,
-  };
-  const filtresActifs = Boolean(ville || jour || q || tarifMinRaw || tarifMaxRaw);
+  const currentParams: Params = { metier, ville, q };
+  const filtresActifs = Boolean(ville || q);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 lg:px-8 lg:py-14">
-      <div className="max-w-2xl">
+    <div className="mx-auto max-w-[1600px] px-4 py-10 lg:px-8 lg:py-14">
+      <div className="mb-6 max-w-2xl">
         <h1 className="font-heading text-3xl font-semibold text-foreground">
           Trouver un prestataire
         </h1>
@@ -81,86 +66,93 @@ export default async function RecherchePrestatairesPage({
         </p>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        <Link
-          href={buildHref(currentParams, { metier: undefined })}
-          className={cn(
-            "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
-            !metier
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border text-foreground hover:border-primary/40",
-          )}
+      <StickySearchShell
+          chips={
+            <div className="flex flex-wrap gap-2 pb-3">
+              <Link
+                href={buildHref(currentParams, { metier: undefined })}
+                className={cn(
+                  "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
+                  !metier
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-background text-foreground hover:border-primary/40",
+                )}
+              >
+                Tous les métiers
+              </Link>
+              {METIERS.map((m) => (
+                <Link
+                  key={m.id}
+                  href={buildHref(currentParams, { metier: m.id })}
+                  className={cn(
+                    "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
+                    metier === m.id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-foreground hover:border-primary/40",
+                  )}
+                >
+                  {m.filiere}
+                </Link>
+              ))}
+            </div>
+          }
         >
-          Tous les métiers
-        </Link>
-        {METIERS.map((m) => (
-          <Link
-            key={m.id}
-            href={buildHref(currentParams, { metier: m.id })}
-            className={cn(
-              "rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
-              metier === m.id
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-foreground hover:border-primary/40",
+          <div className="rounded-[28px] border border-border bg-secondary/30 p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <form
+                method="get"
+                className="flex flex-1 flex-col gap-2 rounded-full border border-border bg-background p-2 shadow-sm sm:flex-row sm:items-center"
+              >
+                {metier && <input type="hidden" name="metier" value={metier} />}
+
+                <div className="flex flex-1 items-center gap-2.5 rounded-full px-3.5 py-2 sm:py-1.5">
+                  <Search className="size-4 shrink-0 text-muted-foreground" />
+                  <input
+                    id="q"
+                    name="q"
+                    defaultValue={q ?? ""}
+                    placeholder="Un métier, une compétence (ex. SSIAP)..."
+                    className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                <div className="hidden h-6 w-px shrink-0 bg-border sm:block" />
+
+                <div className="flex flex-1 items-center gap-2.5 rounded-full px-3.5 py-2 sm:py-1.5">
+                  <MapPin className="size-4 shrink-0 text-muted-foreground" />
+                  <input
+                    id="ville"
+                    name="ville"
+                    defaultValue={ville ?? ""}
+                    placeholder="Paris, Versailles..."
+                    className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                <Button type="submit" className="shrink-0 rounded-full sm:ml-1">
+                  Rechercher
+                </Button>
+              </form>
+
+              <Link
+                href="/tableau-de-bord/publier-mission"
+                className="flex shrink-0 items-center justify-center gap-1.5 text-sm font-medium text-foreground underline underline-offset-2 hover:text-primary sm:justify-start"
+              >
+                <Send className="size-3.5" />
+                Publier une offre
+              </Link>
+            </div>
+
+            {filtresActifs && (
+              <Link
+                href={buildHref({}, { metier })}
+                className="mt-3 inline-block text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                Réinitialiser les filtres
+              </Link>
             )}
-          >
-            {m.filiere}
-          </Link>
-        ))}
-      </div>
-
-      <form
-        method="get"
-        className="mt-6 grid gap-3 rounded-2xl border border-border bg-secondary/30 p-4 sm:grid-cols-2 lg:grid-cols-5"
-      >
-        {metier && <input type="hidden" name="metier" value={metier} />}
-
-        <FormField label="Ville" htmlFor="ville">
-          <Input id="ville" name="ville" defaultValue={ville ?? ""} placeholder="Paris, Versailles..." />
-        </FormField>
-
-        <FormField label="Jour" htmlFor="jour">
-          <select
-            id="jour"
-            name="jour"
-            defaultValue={jour ?? ""}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-          >
-            <option value="">Tous</option>
-            {JOURS_SEMAINE.map((j) => (
-              <option key={j} value={j}>
-                {j}
-              </option>
-            ))}
-          </select>
-        </FormField>
-
-        <FormField label="Tarif min (€)" htmlFor="tarifMin">
-          <Input id="tarifMin" name="tarifMin" type="number" min={0} defaultValue={tarifMinRaw ?? ""} />
-        </FormField>
-
-        <FormField label="Tarif max (€)" htmlFor="tarifMax">
-          <Input id="tarifMax" name="tarifMax" type="number" min={0} defaultValue={tarifMaxRaw ?? ""} />
-        </FormField>
-
-        <FormField label="Mot-clé (ex. SSIAP)" htmlFor="q">
-          <Input id="q" name="q" defaultValue={q ?? ""} />
-        </FormField>
-
-        <div className="flex items-end gap-3 sm:col-span-2 lg:col-span-5">
-          <Button type="submit" className="rounded-full">
-            Rechercher
-          </Button>
-          {filtresActifs && (
-            <Link
-              href={buildHref({}, { metier })}
-              className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            >
-              Réinitialiser les filtres
-            </Link>
-          )}
-        </div>
-      </form>
+          </div>
+        </StickySearchShell>
 
       {resultats.length === 0 ? (
         <div className="mt-16 flex flex-col items-center gap-3 py-10 text-center">
@@ -170,11 +162,7 @@ export default async function RecherchePrestatairesPage({
           </p>
         </div>
       ) : (
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {resultats.map((prestataire) => (
-            <PrestataireResultCard key={prestataire.id} prestataire={prestataire} />
-          ))}
-        </div>
+        <ResultatsPrestataires resultats={resultats} enMissionIds={[...enMissionIds]} />
       )}
 
       {totalPages > 1 && (

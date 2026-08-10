@@ -1,75 +1,66 @@
 import Link from "next/link";
-import { Logo } from "@/components/layout/logo";
+import { MarketingLogo } from "@/components/marketing/marketing-logo";
 
 const FOOTER_COLUMNS = [
   {
+    title: "Secteurs",
+    links: [
+      { href: "/prestataires?metier=securite", label: "Sécurité & Protection" },
+      { href: "/prestataires?metier=accueil", label: "Accueil & Réception" },
+      { href: "/prestataires?metier=vente", label: "Commerce & Retail" },
+    ],
+  },
+  {
     title: "Plateforme",
     links: [
-      { href: "/prestataires", label: "Trouver un prestataire" },
-      { href: "/comment-ca-marche", label: "Comment ça marche" },
-      { href: "/contact", label: "Contact" },
+      { href: "/#comment", label: "Comment ça marche" },
+      { href: "/#verification", label: "Vérification CNAPS" },
+      { href: "/tarifs", label: "Tarifs & commission" },
     ],
   },
   {
-    title: "Prestataires",
+    title: "Entreprise",
     links: [
-      { href: "/inscription/prestataire", label: "Devenir prestataire" },
-      { href: "/metiers/securite", label: "Agents de sécurité" },
-      { href: "/metiers/accueil", label: "Hôtes et hôtesses" },
-      { href: "/metiers/vente", label: "Vendeurs & commerciaux" },
-    ],
-  },
-  {
-    title: "Entreprises",
-    links: [
-      { href: "/inscription/recruteur", label: "Recruter un prestataire" },
-      { href: "/entreprises", label: "Espace entreprise" },
-    ],
-  },
-  {
-    title: "Légal",
-    links: [
+      { href: "/a-propos", label: "À propos" },
       { href: "/cgu", label: "CGU" },
-      { href: "/confidentialite", label: "Confidentialité" },
+      { href: "/contact", label: "Contact" },
     ],
   },
 ];
 
 export function Footer() {
   return (
-    <footer className="border-t border-border bg-secondary/40">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 lg:grid-cols-[minmax(0,1.2fr)_repeat(4,minmax(0,1fr))] lg:px-8">
-        <div className="space-y-3">
-          <Logo />
-          <p className="max-w-xs text-sm text-muted-foreground">
-            La plateforme de mise en relation avec des freelances de terrain
-            qualifiés, disponibles à la demande en Île-de-France.
+    <footer className="bg-ink pb-9 pt-[60px] text-white/50">
+      <div className="mx-auto grid max-w-[1200px] grid-cols-[1.4fr_1fr_1fr_1fr] gap-10 border-b border-white/9 px-10 pb-11 max-[900px]:grid-cols-2 max-[900px]:px-6">
+        <div>
+          <MarketingLogo tone="light" className="mb-[15px]" />
+          <p className="max-w-[260px] text-[13.5px] leading-[1.65]">
+            La plateforme de mise en relation entre entreprises et prestataires
+            de terrain vérifiés : sécurité, accueil, commerce.
           </p>
         </div>
 
         {FOOTER_COLUMNS.map((column) => (
-          <div key={column.title} className="space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">
+          <div key={column.title}>
+            <h5 className="mb-[17px] font-mono-landing text-[11px] uppercase tracking-[0.08em] text-white/35">
               {column.title}
-            </h3>
-            <ul className="space-y-2">
-              {column.links.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            </h5>
+            {column.links.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                className="mb-3 block text-sm text-white/65 transition-colors duration-150 hover:text-white"
+              >
+                {link.label}
+              </Link>
+            ))}
           </div>
         ))}
       </div>
 
-      <div className="border-t border-border px-4 py-6 text-center text-xs text-muted-foreground lg:px-8">
-        © {new Date().getFullYear()} ProParJour. Tous droits réservés.
+      <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 px-10 pt-7 text-[12.5px] max-[900px]:px-6">
+        <span>© {new Date().getFullYear()} ProParJour — Tous droits réservés</span>
+        <span>Île-de-France</span>
       </div>
     </footer>
   );

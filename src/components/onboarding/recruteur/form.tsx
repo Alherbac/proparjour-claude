@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
-import { MapPin, Loader2, MailCheck } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,8 @@ import {
   SECTEURS_ACTIVITE,
   type RecruteurFormValues,
 } from "@/components/onboarding/recruteur/schema";
-import { estVilleCouverte, MESSAGE_HORS_ZONE } from "@/config/zones-couverture";
+import { MESSAGE_HORS_ZONE } from "@/config/zones-couverture";
+import { VilleAutocompleteIdf } from "@/components/ville-autocomplete-idf";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { completerProfilRecruteur } from "@/app/actions/inscription";
@@ -70,7 +71,7 @@ export function RecruteurForm() {
 
   const typeCompte = watch("typeCompte");
   const ville = watch("ville");
-  const horsZone = Boolean(ville) && ville.trim().length > 2 && !estVilleCouverte(ville);
+  const [horsZone, setHorsZone] = useState(false);
 
   async function onSubmit(data: RecruteurFormValues) {
     clearErrors(["raisonSociale", "siret", "secteurActivite"]);
@@ -308,12 +309,20 @@ export function RecruteurForm() {
             </div>
 
             <FormField label="Ville" htmlFor="ville" error={errors.ville?.message}>
-              <div className="relative">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input id="ville" className="pl-9" {...register("ville")} />
-              </div>
+              <Controller
+                name="ville"
+                control={control}
+                render={({ field }) => (
+                  <VilleAutocompleteIdf
+                    id="ville"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onHorsZoneChange={setHorsZone}
+                  />
+                )}
+              />
             </FormField>
-            {horsZone && (
+            {horsZone && Boolean(ville) && ville.trim().length > 2 && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-primary">
                 {MESSAGE_HORS_ZONE}
               </div>
@@ -330,7 +339,12 @@ export function RecruteurForm() {
                   />
                   <span>
                     J&apos;accepte les{" "}
-                    <Link href="/cgu" className="text-primary underline">
+                    <Link
+                      href="/cgu"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline"
+                    >
                       conditions générales d&apos;utilisation
                     </Link>{" "}
                     de ProParJour.

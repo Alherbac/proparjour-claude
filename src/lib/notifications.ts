@@ -8,10 +8,18 @@ export type NotificationType =
   | "mission_acceptee"
   | "mission_refusee"
   | "mission_annulee"
+  | "mission_statut_modifie"
   | "service_fait_declare"
   | "paiement_libere"
   | "litige"
-  | "nouveau_message";
+  | "nouveau_message"
+  | "document_demande"
+  | "profil_valide"
+  | "profil_refuse"
+  | "offre_correspondante"
+  | "candidature_recue"
+  | "candidature_acceptee"
+  | "candidature_refusee";
 
 /**
  * Best-effort : une notification qui échoue à s'écrire ne doit jamais

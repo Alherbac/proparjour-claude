@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Controller, useFormContext } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { METIERS } from "@/config/metiers";
+import { tarifJournalierAffiche } from "@/lib/tarif";
 import type { PrestataireFormValues } from "@/components/onboarding/prestataire/schema";
 
 export function StepCgu({ values }: { values: PrestataireFormValues }) {
@@ -18,7 +19,7 @@ export function StepCgu({ values }: { values: PrestataireFormValues }) {
     [
       "Tarif",
       values.tarifMontant
-        ? `${values.tarifMontant} € ${values.tarifType === "horaire" ? "/ heure" : "/ jour"}`
+        ? `${tarifJournalierAffiche(values.tarifMontant, values.tarifType)} € / jour (${values.tarifMontant} € / heure)`
         : undefined,
     ],
     ["Disponibilités", values.disponibilites?.join(", ")],
@@ -57,7 +58,12 @@ export function StepCgu({ values }: { values: PrestataireFormValues }) {
             />
             <span>
               J&apos;accepte les{" "}
-              <Link href="/cgu" className="text-primary underline">
+              <Link
+                href="/cgu"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
                 conditions générales d&apos;utilisation
               </Link>{" "}
               de ProParJour.

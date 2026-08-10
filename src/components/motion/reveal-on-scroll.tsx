@@ -43,8 +43,8 @@ export function RevealOnScroll({
     <Tag
       ref={ref as never}
       className={cn(
-        "transition-all duration-700 ease-out",
-        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6",
+        "transition-all duration-700 ease-[cubic-bezier(0.16,0.84,0.44,1)] motion-reduce:opacity-100 motion-reduce:translate-y-0 motion-reduce:transition-none",
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
         className,
       )}
       style={{ transitionDelay: visible ? `${delayMs}ms` : "0ms" }}

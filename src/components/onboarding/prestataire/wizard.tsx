@@ -27,9 +27,24 @@ import { SuccessScreen } from "@/components/onboarding/prestataire/success-scree
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { completerProfilPrestataire } from "@/app/actions/inscription";
+import { uploaderEtEnregistrerJustificatif } from "@/lib/justificatifs-upload";
+import { uploaderPhotoProfil } from "@/lib/avatar-upload";
 
 const STORAGE_KEY = "proparjour:onboarding-prestataire";
 const INSCRIPTION_PATH = "/inscription/prestataire";
+
+/**
+ * Best-effort : un échec ici ne doit pas faire perdre le compte déjà
+ * créé — le prestataire réapparaîtra sans document dans la file
+ * d'attente admin, qui pourra lui en redemander un (notification
+ * "document_demande").
+ */
+async function uploaderJustificatif(profilId: string, file: File) {
+  const result = await uploaderEtEnregistrerJustificatif(profilId, "carte_cnaps", file);
+  if (!result.success) {
+    console.error("Échec de l'upload du justificatif :", result.error);
+  }
+}
 
 export function PrestataireWizard() {
   const methods = useForm<PrestataireFormValues>({
@@ -40,6 +55,7 @@ export function PrestataireWizard() {
   const { control, trigger, getValues, setValue, setError, clearErrors, reset } = methods;
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [justificatifFile, setJustificatifFile] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -81,10 +97,12 @@ export function PrestataireWizard() {
   const safeIndex = Math.min(currentIndex, steps.length - 1);
 
   function handlePhotoSelect(file: File) {
+    setPhotoFile(file);
     setPhotoPreviewUrl(URL.createObjectURL(file));
   }
 
   function handlePhotoRemove() {
+    setPhotoFile(null);
     setPhotoPreviewUrl(null);
   }
 
@@ -153,6 +171,24 @@ export function PrestataireWizard() {
         setAuthError(result.error);
         return;
       }
+
+      if (justificatifFile) {
+        await uploaderJustificatif(result.data.profilId, justificatifFile);
+      }
+
+      if (photoFile) {
+        const photoResult = await uploaderPhotoProfil(photoFile);
+        if (photoResult.success) {
+          const supabase = createClient();
+          await supabase
+            .from("prestataires_profils")
+            .update({ photo_url: photoResult.url })
+            .eq("id", result.data.profilId);
+        } else {
+          console.error("Échec de l'upload de la photo :", photoResult.error);
+        }
+      }
+
       window.localStorage.removeItem(STORAGE_KEY);
       setSubmitted(true);
     } finally {

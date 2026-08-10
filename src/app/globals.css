@@ -49,6 +49,41 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Landing "carte pro" — tokens dédiés à la page marketing, additifs
+     (ne redéfinissent aucun token shadcn existant), utilisés uniquement
+     par les composants sous src/components/marketing et le
+     Header/Footer partagé. Valeurs reprises telles quelles de
+     proparjour-landing-v2.html (source de vérité pixel-exacte). */
+  --color-ink: #0a0f1c;
+  --color-ink-2: #121b30;
+  --color-ink-3: #1b2740;
+  --color-paper: #faf8f2;
+  --color-paper-dim: #f1ecdd;
+  --color-line: #e4decb;
+  --color-line-soft: #ece7d8;
+  --color-gold: #d9a441;
+  --color-gold-deep: #b8842a;
+  --color-emerald: #189a6c;
+  --color-sec: #24467a;
+  --color-acc: #c15b37;
+  --color-com: #5e6e33;
+  --color-muted-landing: #5c6478;
+  --color-muted-2: #8891a3;
+  --font-display: var(--font-space-grotesk);
+  --font-mono-landing: var(--font-plex-mono);
+  --font-body-landing: var(--font-inter-landing);
+
+  --radius-landing-sm: 10px;
+  --radius-landing-md: 16px;
+  --radius-landing-lg: 24px;
+  --radius-landing-xl: 32px;
+
+  --shadow-landing-sm: 0 1px 2px rgba(10, 15, 28, 0.06), 0 1px 1px rgba(10, 15, 28, 0.04);
+  --shadow-landing-md: 0 8px 24px -6px rgba(10, 15, 28, 0.16), 0 2px 8px -2px rgba(10, 15, 28, 0.08);
+  --shadow-landing-lg: 0 24px 60px -16px rgba(10, 15, 28, 0.28), 0 8px 20px -8px rgba(10, 15, 28, 0.14);
+  --shadow-landing-card: 0 20px 48px -18px rgba(10, 15, 28, 0.35);
+  --ease-landing: cubic-bezier(0.16, 0.84, 0.44, 1);
 }
 
 :root {
@@ -184,6 +219,28 @@
 
 @utility animate-mesh-drift {
   animation: mesh-drift 18s ease-in-out infinite;
+}
+
+/* Pin les tokens shadcn sémantiques à leurs valeurs "light" quel que
+   soit l'état du ThemeToggle — le chrome marketing (Header/Footer) a
+   une identité de marque fixe (paper/ink), indépendante du mode
+   sombre applicatif qui ne concerne que le dashboard/admin. */
+.theme-pin-light {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --ring: oklch(0.55 0.215 25 / 0.5);
+}
+
+.hero-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
 }
 
 @media (prefers-reduced-motion: reduce) {

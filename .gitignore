@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# migration Lovable — données réelles d'utilisateurs, jamais commitées
+/migration-data/
+/migration-report*.csv
+/migration-report*.json

@@ -2,7 +2,15 @@ import { Controller, useFormContext } from "react-hook-form";
 import { ShieldCheck, UserRound, ShoppingBag } from "lucide-react";
 import { METIERS } from "@/config/metiers";
 import type { PrestataireFormValues } from "@/components/onboarding/prestataire/schema";
+import { FormField } from "@/components/onboarding/form-field";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+const TITRE_EXEMPLES: Record<string, string> = {
+  securite: "ex. Agent de sécurité événementiel, Coordinateur sécurité...",
+  accueil: "ex. Hôte/hôtesse VIP & Luxe, Responsable coordination événementiel...",
+  vente: "ex. Vendeur conseil, Responsable boutique...",
+};
 
 const METIER_ICONS = {
   securite: ShieldCheck,
@@ -13,8 +21,12 @@ const METIER_ICONS = {
 export function StepMetier() {
   const {
     control,
+    register,
+    watch,
     formState: { errors },
   } = useFormContext<PrestataireFormValues>();
+
+  const metierChoisi = watch("metier");
 
   return (
     <div className="space-y-5">
@@ -76,6 +88,20 @@ export function StepMetier() {
         <p className="text-xs font-medium text-destructive">
           {errors.metier.message}
         </p>
+      ) : null}
+
+      {metierChoisi ? (
+        <FormField
+          label="Votre titre professionnel"
+          htmlFor="titre"
+          error={errors.titre?.message}
+        >
+          <Input
+            id="titre"
+            placeholder={TITRE_EXEMPLES[metierChoisi]}
+            {...register("titre")}
+          />
+        </FormField>
       ) : null}
     </div>
   );

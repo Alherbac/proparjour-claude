@@ -40,6 +40,10 @@ export type PaiementStatutType =
 
 export type AdminRole = "admin" | "moderator";
 
+export type OffreStatutType = "publiee" | "pourvue" | "annulee" | "expiree";
+
+export type CandidatureStatutType = "en_attente" | "acceptee" | "refusee";
+
 export type UsersRow = {
   id: string;
   type: UserType | null;
@@ -65,9 +69,11 @@ export type PrestatairesProfilsRow = {
   id: string;
   user_id: string;
   metier: MetierType;
+  titre: string | null;
   statut_independant: StatutIndependantType;
   numero_carte_cnaps: string | null;
   certifications: string[];
+  competences: string[];
   langues: string[];
   tenue: string | null;
   secteur_experience: string | null;
@@ -86,10 +92,55 @@ export type PrestatairesProfilsRow = {
   updated_at: string;
 };
 
+export type PrestatairesFormationsRow = {
+  id: string;
+  prestataire_id: string;
+  etablissement: string;
+  diplome: string;
+  annee_obtention: number | null;
+  description: string | null;
+  created_at: string;
+};
+
+export type AdminAuditLogRow = {
+  id: string;
+  admin_id: string;
+  action: string;
+  cible_type: string;
+  cible_id: string;
+  motif: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ExperiencesRow = {
+  id: string;
+  prestataire_id: string;
+  intitule: string;
+  employeur: string | null;
+  periode: string;
+  lieu: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PrestatairesDisponibilitesExceptionsRow = {
+  id: string;
+  prestataire_id: string;
+  date: string;
+  disponible: boolean;
+  heure_debut: string | null;
+  heure_fin: string | null;
+  created_at: string;
+};
+
 export type PrestatairesPublicsRow = {
   id: string;
   metier: MetierType;
+  titre: string | null;
   certifications: string[];
+  competences: string[];
   langues: string[];
   bio: string | null;
   ville: string;
@@ -110,6 +161,7 @@ export type MissionsRow = {
   recruteur_id: string;
   lieu: string;
   date_mission: string;
+  description: string | null;
   statut: MissionStatutType;
   service_fait: boolean;
   motif_litige: string | null;
@@ -128,6 +180,32 @@ export type MissionLignesRow = {
   tarif_applique: number;
   statut_acceptation: LigneStatutType;
   service_fait: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OffresRow = {
+  id: string;
+  recruteur_id: string;
+  titre: string;
+  description: string;
+  metier: MetierType;
+  ville: string;
+  date_mission: string;
+  heure_debut: string;
+  heure_fin: string;
+  tarif_horaire: number;
+  statut: OffreStatutType;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CandidaturesRow = {
+  id: string;
+  offre_id: string;
+  prestataire_id: string;
+  statut: CandidatureStatutType;
+  message: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -175,6 +253,18 @@ export type UserRolesRow = {
   granted_at: string;
 };
 
+export type JustificatifsRow = {
+  id: string;
+  prestataire_id: string;
+  type_document: string;
+  storage_path: string;
+  statut: StatutVerificationType;
+  motif_refus: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -203,11 +293,18 @@ export type Database = {
           | "bio"
           | "photo_url"
           | "visible"
+          | "competences"
         > &
           Partial<
             Pick<
               PrestatairesProfilsRow,
-              "id" | "statut_verification" | "motif_refus" | "bio" | "photo_url" | "visible"
+              | "id"
+              | "statut_verification"
+              | "motif_refus"
+              | "bio"
+              | "photo_url"
+              | "visible"
+              | "competences"
             >
           >;
         Update: Partial<PrestatairesProfilsRow>;
@@ -217,6 +314,57 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: true;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      prestataires_formations: {
+        Row: PrestatairesFormationsRow;
+        Insert: Omit<PrestatairesFormationsRow, "id" | "created_at"> &
+          Partial<Pick<PrestatairesFormationsRow, "id" | "created_at">>;
+        Update: Partial<PrestatairesFormationsRow>;
+        Relationships: [
+          {
+            foreignKeyName: "prestataires_formations_prestataire_id_fkey";
+            columns: ["prestataire_id"];
+            isOneToOne: false;
+            referencedRelation: "prestataires_profils";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      admin_audit_log: {
+        Row: AdminAuditLogRow;
+        Insert: Omit<AdminAuditLogRow, "id" | "created_at"> & Partial<Pick<AdminAuditLogRow, "id" | "created_at">>;
+        Update: Partial<AdminAuditLogRow>;
+        Relationships: [];
+      };
+      experiences: {
+        Row: ExperiencesRow;
+        Insert: Omit<ExperiencesRow, "id" | "created_at" | "updated_at"> &
+          Partial<Pick<ExperiencesRow, "id" | "created_at" | "updated_at">>;
+        Update: Partial<ExperiencesRow>;
+        Relationships: [
+          {
+            foreignKeyName: "experiences_prestataire_id_fkey";
+            columns: ["prestataire_id"];
+            isOneToOne: false;
+            referencedRelation: "prestataires_profils";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      prestataires_disponibilites_exceptions: {
+        Row: PrestatairesDisponibilitesExceptionsRow;
+        Insert: Omit<PrestatairesDisponibilitesExceptionsRow, "id" | "created_at"> &
+          Partial<Pick<PrestatairesDisponibilitesExceptionsRow, "id" | "created_at">>;
+        Update: Partial<PrestatairesDisponibilitesExceptionsRow>;
+        Relationships: [
+          {
+            foreignKeyName: "prestataires_disponibilites_exceptions_prestataire_id_fkey";
+            columns: ["prestataire_id"];
+            isOneToOne: false;
+            referencedRelation: "prestataires_profils";
             referencedColumns: ["id"];
           },
         ];
@@ -234,6 +382,35 @@ export type Database = {
           Partial<Pick<MissionLignesRow, "id" | "statut_acceptation">>;
         Update: Partial<MissionLignesRow>;
         Relationships: [];
+      };
+      offres: {
+        Row: OffresRow;
+        Insert: Omit<OffresRow, "id" | "created_at" | "updated_at" | "statut"> &
+          Partial<Pick<OffresRow, "id" | "statut">>;
+        Update: Partial<OffresRow>;
+        Relationships: [];
+      };
+      candidatures: {
+        Row: CandidaturesRow;
+        Insert: Omit<CandidaturesRow, "id" | "created_at" | "updated_at" | "statut" | "message"> &
+          Partial<Pick<CandidaturesRow, "id" | "statut" | "message">>;
+        Update: Partial<CandidaturesRow>;
+        Relationships: [
+          {
+            foreignKeyName: "candidatures_offre_id_fkey";
+            columns: ["offre_id"];
+            isOneToOne: false;
+            referencedRelation: "offres";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "candidatures_prestataire_id_fkey";
+            columns: ["prestataire_id"];
+            isOneToOne: false;
+            referencedRelation: "prestataires_profils";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       paiements: {
         Row: PaiementsRow;
@@ -263,6 +440,13 @@ export type Database = {
         Update: Partial<UserRolesRow>;
         Relationships: [];
       };
+      justificatifs: {
+        Row: JustificatifsRow;
+        Insert: Omit<JustificatifsRow, "id" | "created_at" | "statut" | "motif_refus" | "reviewed_at" | "reviewed_by"> &
+          Partial<Pick<JustificatifsRow, "id" | "statut" | "motif_refus" | "reviewed_at" | "reviewed_by">>;
+        Update: Partial<JustificatifsRow>;
+        Relationships: [];
+      };
     };
     Views: {
       prestataires_publics: {
@@ -287,12 +471,21 @@ export type Database = {
           p_taux_commission: number;
           p_montant_commission: number;
           p_stripe_payment_intent_id: string;
+          p_description?: string | null;
         };
         Returns: string;
       };
       has_role: {
         Args: { check_role: AdminRole };
         Returns: boolean;
+      };
+      compter_missions_total: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      prestataires_en_mission_ids: {
+        Args: Record<PropertyKey, never>;
+        Returns: { prestataire_id: string }[];
       };
     };
   };

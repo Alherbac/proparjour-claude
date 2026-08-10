@@ -32,4 +32,5 @@ export type RecruteurFormValues = z.infer<typeof recruteurSchema>;
 
 export const RECRUTEUR_DEFAULT_VALUES: Partial<RecruteurFormValues> = {
   typeCompte: "particulier",
+  ville: "",
 };

@@ -1,6 +1,7 @@
 import { MapPin, Euro } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { METIERS } from "@/config/metiers";
+import { tarifJournalierAffiche } from "@/lib/tarif";
 import type { PrestataireFormValues } from "@/components/onboarding/prestataire/schema";
 
 export function PreviewCard({
@@ -40,13 +41,12 @@ export function PreviewCard({
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          {metier?.label ?? "Métier à choisir"}
+          {values.titre || metier?.label || "Métier à choisir"}
         </p>
         {values.tarifMontant ? (
           <p className="flex items-center gap-1 text-sm font-medium text-primary">
             <Euro className="size-3.5" />
-            {values.tarifMontant} €{" "}
-            {values.tarifType === "horaire" ? "/ heure" : "/ jour"}
+            {tarifJournalierAffiche(values.tarifMontant, values.tarifType ?? "horaire")} € / jour
           </p>
         ) : null}
         {values.specialites && values.specialites.length > 0 && (

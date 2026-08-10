@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CalendarDays, MapPin, Wallet, Bell, Clock } from "lucide-react";
+import { CalendarDays, MapPin, Wallet, Bell, Clock, Briefcase, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getMissionsPrestataire, getMissionsRecruteur } from "@/lib/missions";
+import { getOffresPubliees, getCandidaturesPrestataire } from "@/lib/offres";
+import { OffresBrowser } from "@/components/dashboard/offres-browser";
 
 export const metadata: Metadata = {
   title: "Accueil — ProParJour",
@@ -26,7 +28,19 @@ export default async function AccueilPage() {
     return <AccueilRecruteur prenom={profil.prenom} userId={user.id} />;
   }
 
-  const lignes = await getMissionsPrestataire(user.id);
+  const { data: profilPrestataire } = await supabase
+    .from("prestataires_profils")
+    .select("id, metier")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const [lignes, offres, candidatures] = await Promise.all([
+    getMissionsPrestataire(user.id),
+    getOffresPubliees({}),
+    profilPrestataire ? getCandidaturesPrestataire(profilPrestataire.id) : Promise.resolve([]),
+  ]);
+
+  const candidaturesParOffre = Object.fromEntries(candidatures.map((c) => [c.offre_id, c.statut]));
 
   const aRepondre = lignes.filter((l) => l.statut_acceptation === "en_attente");
   const aVenir = lignes
@@ -43,7 +57,7 @@ export default async function AccueilPage() {
     .reduce((somme, l) => somme + l.tarif_applique, 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <h1 className="font-heading text-2xl font-semibold text-foreground">
         Bonjour {profil?.prenom || ""}
       </h1>
@@ -65,39 +79,49 @@ export default async function AccueilPage() {
         </Link>
       )}
 
-      <Link
-        href="/tableau-de-bord/missions"
-        className="block rounded-2xl border border-border bg-background p-5 shadow-sm"
-      >
-        <p className="text-sm font-medium text-muted-foreground">Prochaine mission</p>
-        {prochaine ? (
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center gap-2 text-foreground">
-              <CalendarDays className="size-4 text-muted-foreground" />
-              {prochaine.mission.date_mission} · {prochaine.heure_debut}–{prochaine.heure_fin}
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="size-4" />
-              {prochaine.mission.lieu}
-            </div>
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-muted-foreground">Aucune mission à venir pour l&apos;instant.</p>
-        )}
-      </Link>
+      <OffresBrowser
+        offres={offres}
+        candidaturesParOffre={candidaturesParOffre}
+        metierDefaut={profilPrestataire?.metier}
+        postulable
+        sousTitre="Les offres publiées correspondant à votre métier, ou parcourez tous les métiers."
+      />
 
-      <Link
-        href="/tableau-de-bord/argent"
-        className="flex items-center gap-3 rounded-2xl border border-border bg-background p-5 shadow-sm"
-      >
-        <Wallet className="size-6 shrink-0 text-primary" />
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Montant en attente</p>
-          <p className="font-heading text-xl font-semibold text-foreground">
-            {montantEnAttente.toFixed(2)} €
-          </p>
-        </div>
-      </Link>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Link
+          href="/tableau-de-bord/missions"
+          className="block rounded-2xl border border-border bg-background p-5 shadow-sm"
+        >
+          <p className="text-sm font-medium text-muted-foreground">Prochaine mission</p>
+          {prochaine ? (
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center gap-2 text-foreground">
+                <CalendarDays className="size-4 text-muted-foreground" />
+                {prochaine.mission.date_mission} · {prochaine.heure_debut}–{prochaine.heure_fin}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="size-4" />
+                {prochaine.mission.lieu}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">Aucune mission à venir pour l&apos;instant.</p>
+          )}
+        </Link>
+
+        <Link
+          href="/tableau-de-bord/argent"
+          className="flex items-center gap-3 rounded-2xl border border-border bg-background p-5 shadow-sm"
+        >
+          <Wallet className="size-6 shrink-0 text-primary" />
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Montant en attente</p>
+            <p className="font-heading text-xl font-semibold text-foreground">
+              {montantEnAttente.toFixed(2)} €
+            </p>
+          </div>
+        </Link>
+      </div>
     </div>
   );
 }
@@ -177,6 +201,30 @@ async function AccueilRecruteur({ prenom, userId }: { prenom: string | null; use
           <p className="font-heading text-xl font-semibold text-foreground">
             {depensesMois.toFixed(2)} €
           </p>
+        </div>
+      </Link>
+
+      <Link
+        href="/tableau-de-bord/publier-mission"
+        className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-5 shadow-sm"
+      >
+        <Send className="size-6 shrink-0 text-primary" />
+        <div>
+          <p className="font-medium text-foreground">Publier une mission</p>
+          <p className="text-sm text-muted-foreground">
+            Décrivez la mission, tous les prestataires du métier concerné seront notifiés
+          </p>
+        </div>
+      </Link>
+
+      <Link
+        href="/tableau-de-bord/mes-offres"
+        className="flex items-center gap-3 rounded-2xl border border-border bg-background p-5 shadow-sm"
+      >
+        <Briefcase className="size-6 shrink-0 text-primary" />
+        <div>
+          <p className="font-medium text-foreground">Mes offres</p>
+          <p className="text-sm text-muted-foreground">Voir vos offres publiées et les candidatures reçues</p>
         </div>
       </Link>
     </div>

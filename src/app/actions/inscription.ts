@@ -11,7 +11,9 @@ import {
   type RecruteurFormValues,
 } from "@/components/onboarding/recruteur/schema";
 
-type ActionResult = { success: true } | { success: false; error: string };
+type ActionResult<T = undefined> =
+  | ({ success: true } & (T extends undefined ? object : { data: T }))
+  | { success: false; error: string };
 
 /**
  * Écrit le profil prestataire (type + prestataires_profils) via le
@@ -22,7 +24,7 @@ type ActionResult = { success: true } | { success: false; error: string };
  */
 export async function completerProfilPrestataire(
   values: PrestataireFormValues,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ profilId: string }>> {
   const parsed = prestataireSchema.safeParse(values);
   if (!parsed.success) {
     return { success: false, error: "Données de profil invalides." };
@@ -53,28 +55,33 @@ export async function completerProfilPrestataire(
     return { success: false, error: userError.message };
   }
 
-  const { error: profilError } = await admin.from("prestataires_profils").insert({
-    user_id: user.id,
-    metier: data.metier,
-    statut_independant: data.statutIndependant,
-    numero_carte_cnaps: data.numeroCarteCnaps || null,
-    certifications: data.certifications,
-    langues: data.langues,
-    tenue: data.tenue || null,
-    secteur_experience: data.secteurExperience || null,
-    remuneration_commission: data.remunerationCommission,
-    specialites: data.specialites,
-    ville: data.ville,
-    tarif_type: data.tarifType,
-    tarif_montant: data.tarifMontant,
-    disponibilites: data.disponibilites,
-  });
+  const { data: profil, error: profilError } = await admin
+    .from("prestataires_profils")
+    .insert({
+      user_id: user.id,
+      metier: data.metier,
+      titre: data.titre,
+      statut_independant: data.statutIndependant,
+      numero_carte_cnaps: data.numeroCarteCnaps || null,
+      certifications: data.certifications,
+      langues: data.langues,
+      tenue: data.tenue || null,
+      secteur_experience: data.secteurExperience || null,
+      remuneration_commission: data.remunerationCommission,
+      specialites: data.specialites,
+      ville: data.ville,
+      tarif_type: data.tarifType,
+      tarif_montant: data.tarifMontant,
+      disponibilites: data.disponibilites,
+    })
+    .select("id")
+    .single();
 
-  if (profilError) {
-    return { success: false, error: profilError.message };
+  if (profilError || !profil) {
+    return { success: false, error: profilError?.message ?? "Échec de la création du profil." };
   }
 
-  return { success: true };
+  return { success: true, data: { profilId: profil.id } };
 }
 
 /**

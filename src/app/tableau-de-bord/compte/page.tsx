@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Mail, Phone, MapPin, ShieldCheck, ShieldAlert, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { METIERS } from "@/config/metiers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DisponibilitesForm } from "@/components/dashboard/disponibilites-form";
+import { CalendrierDisponibilites } from "@/components/dashboard/calendrier-disponibilites";
+import { MesJustificatifs } from "@/components/dashboard/mes-justificatifs";
+import { MesExperiences } from "@/components/dashboard/mes-experiences";
+import { ModifierProfilPrestataireForm } from "@/components/dashboard/modifier-profil-prestataire-form";
 import { signOutAction } from "@/app/actions/auth";
 
 export const metadata: Metadata = {
@@ -49,36 +52,56 @@ export default async function ComptePage() {
 
   if (!prestataireProfil) redirect("/tableau-de-bord");
 
-  const metier = METIERS.find((m) => m.id === prestataireProfil.metier);
+  const [
+    { data: justificatifs },
+    { data: formations },
+    { data: exceptionsDisponibilites },
+    { data: experiences },
+  ] = await Promise.all([
+    supabase.from("justificatifs").select("*").eq("prestataire_id", prestataireProfil.id),
+    supabase
+      .from("prestataires_formations")
+      .select("*")
+      .eq("prestataire_id", prestataireProfil.id)
+      .order("annee_obtention", { ascending: false }),
+    supabase
+      .from("prestataires_disponibilites_exceptions")
+      .select("*")
+      .eq("prestataire_id", prestataireProfil.id),
+    supabase
+      .from("experiences")
+      .select("*")
+      .eq("prestataire_id", prestataireProfil.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
   return (
     <div className="space-y-4">
       <h1 className="font-heading text-2xl font-semibold text-foreground">Mon compte</h1>
 
       <Section titre="Mon profil">
-        <div className="space-y-2">
-          <p className="font-medium text-foreground">
-            {profil?.prenom} {profil?.nom}
-          </p>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Mail className="size-4" />
-            {user.email}
-          </div>
-          {profil?.telephone && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Phone className="size-4" />
-              {profil.telephone}
-            </div>
-          )}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="size-4" />
-            {prestataireProfil.ville}
-          </div>
-          <p className="pt-1 text-sm text-foreground">
-            {metier?.label ?? prestataireProfil.metier} · {prestataireProfil.tarif_montant} €{" "}
-            {prestataireProfil.tarif_type === "horaire" ? "/ heure" : "/ jour"}
-          </p>
+        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <Mail className="size-4" />
+          {user.email}
         </div>
+
+        <ModifierProfilPrestataireForm user={{ prenom: profil?.prenom ?? null, nom: profil?.nom ?? null, telephone: profil?.telephone ?? null }} profil={prestataireProfil} />
+
+        {formations && formations.length > 0 && (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-sm font-medium text-foreground">Formations</p>
+            <ul className="mt-2 space-y-2">
+              {formations.map((formation) => (
+                <li key={formation.id} className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{formation.diplome}</span>
+                  {" — "}
+                  {formation.etablissement}
+                  {formation.annee_obtention ? ` (${formation.annee_obtention})` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Section>
 
       <Section titre="Mes disponibilités">
@@ -86,6 +109,15 @@ export default async function ComptePage() {
           disponibilitesInitiales={prestataireProfil.disponibilites}
           visibleInitial={prestataireProfil.visible}
         />
+        <div className="mt-5 border-t border-border pt-5">
+          <p className="mb-3 text-sm font-medium text-foreground">
+            Calendrier — jours et horaires précis
+          </p>
+          <CalendrierDisponibilites
+            disponibilitesHebdo={prestataireProfil.disponibilites}
+            exceptionsInitiales={exceptionsDisponibilites ?? []}
+          />
+        </div>
       </Section>
 
       <Section titre="Mes documents">
@@ -113,6 +145,17 @@ export default async function ComptePage() {
             ))}
           </div>
         )}
+        <div className="mt-4 border-t border-border pt-4">
+          <MesJustificatifs
+            profilId={prestataireProfil.id}
+            metier={prestataireProfil.metier}
+            justificatifsInitiaux={justificatifs ?? []}
+          />
+        </div>
+      </Section>
+
+      <Section titre="Expériences">
+        <MesExperiences experiencesInitiales={experiences ?? []} />
       </Section>
 
       <Section titre="Paramètres">

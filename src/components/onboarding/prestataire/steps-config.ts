@@ -29,7 +29,7 @@ const BASE_STEPS: StepDefinition[] = [
     id: "metier",
     title: "Votre métier",
     tip: "Ce choix détermine les questions suivantes et les missions qui vous seront proposées.",
-    fields: ["metier"],
+    fields: ["metier", "titre"],
   },
   {
     id: "specialites",

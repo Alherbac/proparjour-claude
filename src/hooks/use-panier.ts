@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { PANIER_EVENT, PANIER_STORAGE_KEY, type Panier } from "@/lib/panier";
 
-const PANIER_VIDE: Panier = { lieu: "", dateMission: "", lignes: [] };
+const PANIER_VIDE: Panier = { lignes: [] };
 
 // useSyncExternalStore exige une snapshot référentiellement stable
 // tant que la donnée sous-jacente n'a pas changé (sinon boucle de

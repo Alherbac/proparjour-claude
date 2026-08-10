@@ -1,10 +1,18 @@
 import type { MetierId } from "@/config/metiers";
 import type { TarifType } from "@/lib/supabase/database.types";
+import { montantMission } from "@/lib/duree";
 
 export const PANIER_STORAGE_KEY = "proparjour:panier";
 const STORAGE_KEY = PANIER_STORAGE_KEY;
 export const PANIER_EVENT = "proparjour:panier-update";
 
+/**
+ * Chaque prestataire du panier porte sa propre date, adresse exacte
+ * et description — une prestation multiple peut réunir des personnes
+ * sur des lieux ou des jours différents (voir finaliserCommande dans
+ * actions/commande.ts, qui regroupe les lignes par date+adresse pour
+ * créer une mission par événement réel).
+ */
 export type LignePanier = {
   prestataireId: string;
   prenom: string;
@@ -13,15 +21,18 @@ export type LignePanier = {
   tarifType: TarifType;
   heureDebut: string;
   heureFin: string;
+  photoUrl: string | null;
+  date: string;
+  adresse: string;
+  description: string;
+  selectionnee: boolean;
 };
 
 export type Panier = {
-  lieu: string;
-  dateMission: string;
   lignes: LignePanier[];
 };
 
-const PANIER_VIDE: Panier = { lieu: "", dateMission: "", lignes: [] };
+const PANIER_VIDE: Panier = { lignes: [] };
 
 export function lirePanier(): Panier {
   if (typeof window === "undefined") return PANIER_VIDE;
@@ -40,35 +51,31 @@ function ecrirePanier(panier: Panier) {
   window.dispatchEvent(new Event(PANIER_EVENT));
 }
 
-/**
- * Une mission = un événement (une date, un lieu) — voir cahier des
- * charges section 7. Le lieu/date du premier ajout s'impose au panier ;
- * les ajouts suivants les réutilisent (mais restent modifiables depuis
- * la page panier).
- */
-export function ajouterLigne(ligne: LignePanier, contexte: { lieu: string; dateMission: string }) {
+export function ajouterLigne(ligne: Omit<LignePanier, "selectionnee">) {
   const panier = lirePanier();
-  const dejaCadre = panier.lignes.length > 0;
-  ecrirePanier({
-    lieu: dejaCadre ? panier.lieu : contexte.lieu,
-    dateMission: dejaCadre ? panier.dateMission : contexte.dateMission,
-    lignes: [...panier.lignes, ligne],
-  });
+  ecrirePanier({ lignes: [...panier.lignes, { ...ligne, selectionnee: true }] });
 }
 
 export function retirerLigne(index: number) {
   const panier = lirePanier();
-  const lignes = panier.lignes.filter((_, i) => i !== index);
+  ecrirePanier({ lignes: panier.lignes.filter((_, i) => i !== index) });
+}
+
+/** Coche/décoche une ligne — seules les lignes cochées sont envoyées lors du prochain "Envoyer l'offre". */
+export function basculerSelectionLigne(index: number) {
+  const panier = lirePanier();
   ecrirePanier({
-    lieu: lignes.length > 0 ? panier.lieu : "",
-    dateMission: lignes.length > 0 ? panier.dateMission : "",
-    lignes,
+    lignes: panier.lignes.map((l, i) => (i === index ? { ...l, selectionnee: !l.selectionnee } : l)),
   });
 }
 
-export function mettreAJourContexte(contexte: { lieu: string; dateMission: string }) {
+/** Retire du panier les lignes effectivement envoyées (par index), en conservant celles laissées de côté pour plus tard. */
+export function retirerLignesParIndex(indices: number[]) {
   const panier = lirePanier();
-  ecrirePanier({ ...panier, ...contexte });
+  const aRetirer = new Set(indices);
+  ecrirePanier({
+    lignes: panier.lignes.filter((_, i) => !aRetirer.has(i)),
+  });
 }
 
 export function viderPanier() {
@@ -77,16 +84,7 @@ export function viderPanier() {
 
 export function montantLigne(ligne: LignePanier): number {
   if (ligne.tarifType === "horaire") {
-    const [hd, md] = ligne.heureDebut.split(":").map(Number);
-    const [hf, mf] = ligne.heureFin.split(":").map(Number);
-    // Mission de nuit (ex. 18h-2h, l'exemple même du cahier des
-    // charges) : l'heure de fin "avant" l'heure de début sur l'horloge
-    // signifie qu'elle tombe le lendemain — on ajoute 24h.
-    const debut = hd + md / 60;
-    let fin = hf + mf / 60;
-    if (fin <= debut) fin += 24;
-    const heures = fin - debut;
-    return Math.max(0, Math.round(heures * ligne.tarifMontant * 100) / 100);
+    return montantMission(ligne.heureDebut, ligne.heureFin, ligne.tarifMontant);
   }
   return ligne.tarifMontant;
 }

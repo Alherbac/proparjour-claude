@@ -6,9 +6,17 @@ import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js"
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finaliserCommande } from "@/app/actions/commande";
-import { viderPanier, type Panier } from "@/lib/panier";
+import { retirerLignesParIndex, type LignePanier } from "@/lib/panier";
 
-export function CheckoutForm({ panier, montant }: { panier: Panier; montant: number }) {
+export function CheckoutForm({
+  lignes,
+  indices,
+  montant,
+}: {
+  lignes: LignePanier[];
+  indices: number[];
+  montant: number;
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
@@ -33,15 +41,24 @@ export function CheckoutForm({ panier, montant }: { panier: Panier; montant: num
       return;
     }
 
-    const result = await finaliserCommande(paymentIntent.id, panier);
+    const result = await finaliserCommande(paymentIntent.id, lignes);
     if (!result.success) {
       setError(result.error);
       setSubmitting(false);
       return;
     }
 
-    viderPanier();
-    router.push(`/tableau-de-bord?mission=${result.data.missionId}`);
+    // Ne retire du panier que les lignes effectivement envoyées — les
+    // prestataires laissés décochés restent disponibles pour un envoi
+    // ultérieur.
+    retirerLignesParIndex(indices);
+
+    const [premierMissionId] = result.data.missionIds;
+    router.push(
+      result.data.missionIds.length === 1
+        ? `/tableau-de-bord?mission=${premierMissionId}`
+        : "/tableau-de-bord/missions",
+    );
   }
 
   return (

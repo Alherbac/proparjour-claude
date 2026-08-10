@@ -2,23 +2,25 @@ import { Controller, useFormContext } from "react-hook-form";
 import { FormField } from "@/components/onboarding/form-field";
 import { ChipMultiSelect } from "@/components/onboarding/chip-multi-select";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import {
   JOURS_SEMAINE,
   type PrestataireFormValues,
 } from "@/components/onboarding/prestataire/schema";
-
-const TARIF_TYPES = [
-  { value: "journalier", label: "Au jour (TJM)" },
-  { value: "horaire", label: "À l'heure" },
-] as const;
+import { HEURES_JOUR_REFERENCE } from "@/lib/tarif";
 
 export function StepTarif() {
   const {
     register,
     control,
+    watch,
     formState: { errors },
   } = useFormContext<PrestataireFormValues>();
+
+  const tarifHoraire = watch("tarifMontant");
+  const tarifJournalierIndicatif =
+    typeof tarifHoraire === "number" && tarifHoraire > 0
+      ? Math.round(tarifHoraire * HEURES_JOUR_REFERENCE * 100) / 100
+      : null;
 
   return (
     <div className="space-y-5">
@@ -31,47 +33,35 @@ export function StepTarif() {
         </p>
       </div>
 
-      <FormField label="Type de tarif" error={errors.tarifType?.message}>
-        <Controller
-          name="tarifType"
-          control={control}
-          render={({ field }) => (
-            <div className="grid grid-cols-2 gap-3">
-              {TARIF_TYPES.map((type) => (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => field.onChange(type.value)}
-                  aria-pressed={field.value === type.value}
-                  className={cn(
-                    "rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
-                    field.value === type.value
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border text-foreground hover:border-primary/40",
-                  )}
-                >
-                  {type.label}
-                </button>
-              ))}
-            </div>
-          )}
-        />
-      </FormField>
-
       <FormField
-        label="Montant (€)"
+        label="Tarif horaire (€)"
         htmlFor="tarifMontant"
         error={errors.tarifMontant?.message}
+        hint="C'est votre tarif de référence — les recruteurs peuvent vous proposer un tarif horaire différent au moment de la mission."
       >
         <Input
           id="tarifMontant"
           type="number"
           min={0}
           step="0.5"
-          placeholder="150"
+          placeholder="18"
           {...register("tarifMontant", { valueAsNumber: true })}
         />
       </FormField>
+
+      {tarifJournalierIndicatif !== null && (
+        <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3">
+          <p className="text-sm text-muted-foreground">
+            Tarif journalier indicatif, affiché sur votre profil
+          </p>
+          <p className="font-heading text-lg font-semibold text-foreground">
+            {tarifJournalierIndicatif} € / jour
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Calculé automatiquement sur la base d&apos;une journée de {HEURES_JOUR_REFERENCE}h.
+          </p>
+        </div>
+      )}
 
       <FormField
         label="Jours de disponibilité"
