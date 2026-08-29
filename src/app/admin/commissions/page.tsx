@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { requireAdminSession } from "@/lib/admin/auth";
-import { ModuleAVenir } from "@/components/admin/module-a-venir";
+import { getResumeCommissions } from "@/lib/admin/commissions";
+import { CommissionsScreen } from "@/components/admin/commissions-screen";
 
 export const metadata: Metadata = { title: "Commissions — Admin ProParJour" };
 
 export default async function AdminCommissionsPage() {
-  await requireAdminSession();
-  return <ModuleAVenir titre="Commissions" lot="Lot 4 — Finances (adapté au séquestre simple)" />;
+  const session = await requireAdminSession();
+  const resume = await getResumeCommissions();
+  return <CommissionsScreen resume={resume} peutModifier={session.role === "admin"} />;
 }

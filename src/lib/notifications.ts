@@ -19,7 +19,9 @@ export type NotificationType =
   | "offre_correspondante"
   | "candidature_recue"
   | "candidature_acceptee"
-  | "candidature_refusee";
+  | "candidature_refusee"
+  | "offre_cloturee"
+  | "nouvel_avis";
 
 /**
  * Best-effort : une notification qui échoue à s'écrire ne doit jamais

@@ -11,7 +11,7 @@ export default async function AdminValidationsPage() {
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Validation</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Validation</h1>
       <div className="mt-4">
         <KycQueue dossiers={dossiers} />
       </div>

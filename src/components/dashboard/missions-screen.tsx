@@ -102,7 +102,7 @@ export function MissionsScreen({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-semibold text-foreground">Mes missions</h1>
+        <h1 className="font-display-serif text-2xl text-foreground">Mes missions</h1>
         <div className="flex gap-1 rounded-full border border-border p-1">
           <button
             type="button"

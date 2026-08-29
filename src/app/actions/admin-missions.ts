@@ -7,6 +7,7 @@ import { getStripeClient } from "@/lib/stripe/server";
 import { creerNotification } from "@/lib/notifications";
 import { creerMessageSysteme } from "@/lib/messages";
 import { journaliser } from "@/lib/admin/audit";
+import { traduireErreurDb } from "@/lib/erreurs-db";
 import type { MissionStatutType } from "@/lib/supabase/database.types";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -51,7 +52,7 @@ export async function forcerStatutMission(
 
   const { error } = await admin.from("missions").update({ statut: nouveauStatut }).eq("id", missionId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible de modifier le statut de la mission.") };
   }
 
   await journaliser({
@@ -111,7 +112,7 @@ export async function debloquerFondsMission(missionId: string, motif: string): P
     .update({ statut: "libere", date_deblocage: new Date().toISOString() })
     .eq("mission_id", missionId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible de débloquer les fonds pour le moment.") };
   }
 
   await journaliser({
@@ -163,7 +164,7 @@ export async function annulerMissionAdmin(missionId: string, motif: string): Pro
 
   const { error } = await admin.from("missions").update({ statut: "annulee" }).eq("id", missionId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'annuler cette mission.") };
   }
 
   const { data: paiement } = await admin
@@ -172,19 +173,38 @@ export async function annulerMissionAdmin(missionId: string, motif: string): Pro
     .eq("mission_id", missionId)
     .maybeSingle();
 
+  // Même règle que annulerMission (recruteur) : `rembourse` n'est écrit
+  // qu'après confirmation Stripe réelle, jamais avant — sinon la base
+  // peut afficher un remboursement qui n'a en réalité pas eu lieu
+  // (carte expirée, Stripe indisponible). Un échec bascule le paiement
+  // sur le statut `echec` (déjà compté par le KPI admin, lib/admin/
+  // dashboard.ts) et journalise l'incident, plutôt que de l'avaler
+  // silencieusement.
   if (paiement && paiement.statut === "sequestre") {
-    await admin
-      .from("paiements")
-      .update({ statut: "rembourse", date_deblocage: new Date().toISOString() })
-      .eq("mission_id", missionId);
-
     if (paiement.stripe_payment_intent_id) {
       try {
         const stripe = getStripeClient();
         await stripe.refunds.create({ payment_intent: paiement.stripe_payment_intent_id });
-      } catch {
-        // Best-effort — voir annulerMission pour le même choix.
+        await admin
+          .from("paiements")
+          .update({ statut: "rembourse", date_deblocage: new Date().toISOString() })
+          .eq("mission_id", missionId);
+      } catch (refundError) {
+        await admin.from("paiements").update({ statut: "echec" }).eq("mission_id", missionId);
+        await journaliser({
+          adminId: session.userId,
+          action: "remboursement_echec",
+          cibleType: "mission",
+          cibleId: missionId,
+          motif: "Échec du remboursement Stripe lors d'une annulation admin",
+          details: { erreur: refundError instanceof Error ? refundError.message : String(refundError) },
+        });
       }
+    } else {
+      await admin
+        .from("paiements")
+        .update({ statut: "rembourse", date_deblocage: new Date().toISOString() })
+        .eq("mission_id", missionId);
     }
   }
 
@@ -245,7 +265,7 @@ export async function ouvrirLitigeMissionAdmin(missionId: string, motif: string)
     .update({ statut: "litige", motif_litige: motif.trim() })
     .eq("id", missionId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'ouvrir le litige pour le moment.") };
   }
 
   await journaliser({

@@ -3,6 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminRole } from "@/lib/admin/auth";
 import { creerNotification } from "@/lib/notifications";
+import { traduireErreurDb } from "@/lib/erreurs-db";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -20,7 +21,7 @@ export async function validerJustificatif(justificatifId: string): Promise<Actio
       reviewed_by: session.userId,
     })
     .eq("id", justificatifId);
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traduireErreurDb(error, "Impossible de valider ce document pour le moment.") };
   return { success: true };
 }
 
@@ -39,7 +40,7 @@ export async function refuserJustificatif(justificatifId: string, motif: string)
       reviewed_by: session.userId,
     })
     .eq("id", justificatifId);
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traduireErreurDb(error, "Impossible de refuser ce document pour le moment.") };
   return { success: true };
 }
 
@@ -63,7 +64,7 @@ export async function validerDossier(profilId: string): Promise<ActionResult> {
     .from("prestataires_profils")
     .update({ statut_verification: "valide", motif_refus: null })
     .eq("id", profilId);
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traduireErreurDb(error, "Impossible de valider ce dossier pour le moment.") };
 
   await creerNotification({
     userId: profil.user_id,
@@ -94,7 +95,7 @@ export async function refuserDossier(profilId: string, motif: string): Promise<A
     .from("prestataires_profils")
     .update({ statut_verification: "refuse", motif_refus: motif.trim() })
     .eq("id", profilId);
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traduireErreurDb(error, "Impossible de refuser ce dossier pour le moment.") };
 
   await creerNotification({
     userId: profil.user_id,
@@ -142,7 +143,7 @@ export async function obtenirUrlSigneeJustificatif(
     .from("justificatifs")
     .createSignedUrl(storagePath, 15 * 60);
   if (error || !data) {
-    return { success: false, error: error?.message ?? "Impossible de générer le lien." };
+    return { success: false, error: "Impossible de générer le lien pour le moment." };
   }
   return { success: true, data: { url: data.signedUrl } };
 }

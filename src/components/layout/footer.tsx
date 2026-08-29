@@ -1,66 +1,71 @@
 import Link from "next/link";
 import { MarketingLogo } from "@/components/marketing/marketing-logo";
 
-const FOOTER_COLUMNS = [
+/**
+ * Refonte Claude Istanbul 1, §4.10 — footer clair (plus de bg-ink).
+ * Colonnes et intitulés de liens repris mot pour mot de la maquette
+ * (tableau `footer` du prototype) ; les hrefs pointent vers les
+ * vraies routes du site (le prototype utilisait des ancres
+ * factices "#recherche" pour tout, propres à l'outil de maquettage).
+ */
+const COLONNES = [
   {
-    title: "Secteurs",
-    links: [
-      { href: "/prestataires?metier=securite", label: "Sécurité & Protection" },
-      { href: "/prestataires?metier=accueil", label: "Accueil & Réception" },
-      { href: "/prestataires?metier=vente", label: "Commerce & Retail" },
+    titre: "Clients",
+    liens: [
+      { href: "/prestataires", label: "Trouver un professionnel" },
+      { href: "/#recherche", label: "Publier un besoin" },
+      { href: "/#fonctionnement", label: "Comment ça marche" },
     ],
   },
   {
-    title: "Plateforme",
-    links: [
-      { href: "/#comment", label: "Comment ça marche" },
-      { href: "/#verification", label: "Vérification CNAPS" },
-      { href: "/tarifs", label: "Tarifs & commission" },
+    titre: "Professionnels",
+    liens: [
+      { href: "/inscription/prestataire", label: "Créer mon profil" },
+      { href: "/#fonctionnement", label: "Comment ça marche" },
+      { href: "/tableau-de-bord/missions", label: "Missions" },
     ],
   },
   {
-    title: "Entreprise",
-    links: [
+    titre: "ProParJour",
+    liens: [
       { href: "/a-propos", label: "À propos" },
-      { href: "/cgu", label: "CGU" },
       { href: "/contact", label: "Contact" },
+      { href: "/cgu", label: "CGU" },
+      { href: "/cgu", label: "Confidentialité" },
     ],
   },
-];
+] as const;
 
 export function Footer() {
   return (
-    <footer className="bg-ink pb-9 pt-[60px] text-white/50">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-[1.4fr_1fr_1fr_1fr] gap-10 border-b border-white/9 px-10 pb-11 max-[900px]:grid-cols-2 max-[900px]:px-6">
+    <footer className="border-t border-ppj-line-2 bg-ppj-paper" style={{ padding: "clamp(48px,6vw,72px) 0 32px" }}>
+      <div
+        className="mx-auto grid max-w-[1240px] gap-9 px-6"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))" }}
+      >
         <div>
-          <MarketingLogo tone="light" className="mb-[15px]" />
-          <p className="max-w-[260px] text-[13.5px] leading-[1.65]">
-            La plateforme de mise en relation entre entreprises et prestataires
-            de terrain vérifiés : sécurité, accueil, commerce.
+          <MarketingLogo height={22} />
+          <p className="mt-3.5 max-w-[22em] text-[13.5px] text-ppj-text-4">
+            Les professionnels de terrain, quand vous en avez besoin.
           </p>
         </div>
-
-        {FOOTER_COLUMNS.map((column) => (
-          <div key={column.title}>
-            <h5 className="mb-[17px] font-mono-landing text-[11px] uppercase tracking-[0.08em] text-white/35">
-              {column.title}
-            </h5>
-            {column.links.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className="mb-3 block text-sm text-white/65 transition-colors duration-150 hover:text-white"
-              >
-                {link.label}
-              </Link>
-            ))}
+        {COLONNES.map((col) => (
+          <div key={col.titre}>
+            <p className="mb-3.5 font-mono text-[12.5px] uppercase tracking-[0.1em] text-ppj-text-4">{col.titre}</p>
+            <ul className="grid list-none gap-2.5 p-0">
+              {col.liens.map((l) => (
+                <li key={l.label}>
+                  <Link href={l.href} className="text-[14.5px] text-ppj-neutral-text transition-colors hover:text-ppj-ink">
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         ))}
       </div>
-
-      <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 px-10 pt-7 text-[12.5px] max-[900px]:px-6">
-        <span>© {new Date().getFullYear()} ProParJour — Tous droits réservés</span>
-        <span>Île-de-France</span>
+      <div className="mx-auto mt-10 max-w-[1240px] border-t border-ppj-line-2 px-6 pt-5 text-[12.5px] text-ppj-text-5">
+        © {new Date().getFullYear()} ProParJour
       </div>
     </footer>
   );

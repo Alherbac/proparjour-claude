@@ -23,7 +23,7 @@ export async function uploaderPhotoProfil(
     .from("avatars")
     .upload(chemin, file, { contentType: file.type, upsert: true });
   if (uploadError) {
-    return { success: false, error: uploadError.message };
+    return { success: false, error: "Impossible d'envoyer cette photo pour le moment." };
   }
 
   const { data } = supabase.storage.from("avatars").getPublicUrl(chemin);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Send, CalendarDays, Clock, Euro } from "lucide-react";
@@ -13,6 +13,7 @@ import { METIERS, type MetierId } from "@/config/metiers";
 import { cn } from "@/lib/utils";
 import { publierOffre } from "@/app/actions/offres";
 import { heuresEntre, montantMission } from "@/lib/duree";
+import { lireBesoin, effacerBesoin } from "@/lib/besoin";
 
 export function PublierMissionForm() {
   const router = useRouter();
@@ -25,6 +26,20 @@ export function PublierMissionForm() {
   const [heureFin, setHeureFin] = useState("17:00");
   const [tarifHoraire, setTarifHoraire] = useState("");
   const [envoi, setEnvoi] = useState(false);
+
+  // Reprend le besoin décrit sur la page de recherche (§3 : ne jamais
+  // faire perdre une demande déjà saisie), sans jamais écraser un
+  // brouillon déjà en cours de saisie.
+  useEffect(() => {
+    const besoin = lireBesoin();
+    if (!besoin) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydratation ponctuelle depuis localStorage au montage (même besoin que wizard.tsx, qui utilise reset() pour le même cas), pas de boucle de rendus en cascade
+    if (besoin.metier) setMetier(besoin.metier);
+    if (besoin.ville) setVille(besoin.ville);
+    if (besoin.date) setDateMission(besoin.date);
+    if (besoin.heureDebut) setHeureDebut(besoin.heureDebut);
+    if (besoin.heureFin) setHeureFin(besoin.heureFin);
+  }, []);
 
   const tarifHoraireNombre = Number(tarifHoraire);
   const montantTotalEstime =
@@ -57,13 +72,14 @@ export function PublierMissionForm() {
       return;
     }
     toast.success("Votre offre a été publiée et les prestataires correspondants ont été notifiés.");
+    effacerBesoin();
     router.push("/tableau-de-bord/mes-offres");
   }
 
   return (
     <form onSubmit={handleSubmit} className="mx-auto max-w-xl space-y-5 px-4 py-10 lg:px-8">
       <div>
-        <h1 className="font-heading text-2xl font-semibold text-foreground">Publier une mission</h1>
+        <h1 className="font-display-serif text-2xl text-foreground">Publier une mission</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Votre offre sera visible par tous les prestataires du métier concerné, qui recevront
           aussi une notification.

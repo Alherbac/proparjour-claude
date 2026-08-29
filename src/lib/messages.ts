@@ -40,6 +40,43 @@ export async function creerMessageSysteme(params: {
   }
 }
 
+export type DevisPayload = {
+  prestation: string;
+  date: string;
+  heureDebut: string;
+  heureFin: string;
+  lieu: string;
+  tarifHoraire: number;
+  montantTotal: number;
+};
+
+/**
+ * Carte devis structurée (Bloc 9) : même mécanisme best-effort que
+ * creerMessageSysteme, avec `metadata` en plus pour le rendu riche
+ * côté client (MessageThread) — `contenu` reste un texte de repli
+ * exploitable par les notifications et les lecteurs d'écran.
+ */
+export async function creerMessageDevis(params: {
+  missionId: string;
+  expediteurId: string;
+  destinataireId: string;
+  devis: DevisPayload;
+}) {
+  try {
+    const admin = createAdminClient();
+    await admin.from("messages").insert({
+      mission_id: params.missionId,
+      expediteur_id: params.expediteurId,
+      destinataire_id: params.destinataireId,
+      contenu: `Devis — ${params.devis.prestation}, ${params.devis.montantTotal} €`,
+      type: "devis",
+      metadata: params.devis,
+    });
+  } catch {
+    // Volontairement ignoré — voir commentaire de creerMessageSysteme.
+  }
+}
+
 export type Participant = { userId: string; prenom: string | null; nom: string | null };
 
 export type ParticipantsMission = {

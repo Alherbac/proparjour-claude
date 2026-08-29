@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarDays, MapPin, MessageCircle, FileDown, ChevronDown } from "lucide-react";
+import { CalendarDays, MapPin, MessageCircle, FileDown, ChevronDown, RotateCcw } from "lucide-react";
 import { AnnulerMissionButton } from "@/components/missions/annuler-mission-button";
 import { ConfirmerOuContester } from "@/components/missions/confirmer-ou-contester";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import type { MissionAvecLignes } from "@/lib/missions";
 const STATUTS_ANNULABLES = ["en_attente", "confirmee"];
 const STATUTS_FACTURABLES = ["sequestre", "libere"];
 const STATUTS_CLOTURABLES = ["confirmee", "en_cours"];
+const STATUTS_REFAISABLES = ["terminee", "litige"];
 
 const STATUT_BADGE: Record<string, { label: string; style: string }> = {
   en_attente: { label: "🟠 En attente de confirmation", style: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
@@ -25,6 +26,11 @@ const LIGNE_STATUT_LABELS: Record<string, string> = {
   en_attente: "En attente du prestataire",
   acceptee: "Confirmée par le prestataire",
   refusee: "Refusée par le prestataire",
+  // Jamais répondue : passée 'refusee' automatiquement au paiement une
+  // fois un(e) autre prestataire accepté(e) (migration 0040/0041) —
+  // "Refusée par le prestataire" serait faux ici, il/elle n'a rien
+  // refusé, la mission était déjà pourvue avant sa réponse.
+  nonRetenue: "Non retenu(e) (mission déjà pourvue)",
 };
 
 export function MissionCardRecruteur({
@@ -75,7 +81,9 @@ export function MissionCardRecruteur({
                 {ligne.heure_debut}–{ligne.heure_fin}
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {LIGNE_STATUT_LABELS[ligne.statut_acceptation]}
+                {ligne.statut_acceptation === "refusee" && ligne.refus_automatique
+                  ? LIGNE_STATUT_LABELS.nonRetenue
+                  : LIGNE_STATUT_LABELS[ligne.statut_acceptation]}
               </div>
             </li>
           ))}
@@ -112,7 +120,18 @@ export function MissionCardRecruteur({
             </Link>
           )}
         </div>
-        {STATUTS_ANNULABLES.includes(mission.statut) && <AnnulerMissionButton missionId={mission.id} />}
+        <div className="flex items-center gap-3">
+          {STATUTS_REFAISABLES.includes(mission.statut) && mission.lignes.some((l) => l.statut_acceptation === "acceptee") && (
+            <Link
+              href={`/tableau-de-bord/missions/${mission.id}/refaire`}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            >
+              <RotateCcw className="size-3.5" />
+              Refaire
+            </Link>
+          )}
+          {STATUTS_ANNULABLES.includes(mission.statut) && <AnnulerMissionButton missionId={mission.id} />}
+        </div>
       </div>
 
       {STATUTS_CLOTURABLES.includes(mission.statut) && (

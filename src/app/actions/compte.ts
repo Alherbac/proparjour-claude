@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { JOURS_SEMAINE } from "@/components/onboarding/prestataire/schema";
+import { ibanValide, bicValide } from "@/lib/iban";
+import { traduireErreurDb } from "@/lib/erreurs-db";
 import type { StatutIndependantType, TarifType } from "@/lib/supabase/database.types";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -56,7 +58,7 @@ export async function mettreAJourDisponibilites(
     .eq("user_id", user.id);
 
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer vos disponibilités pour le moment.") };
   }
 
   return { success: true };
@@ -97,7 +99,7 @@ export async function mettreAJourProfilPrestataire(
     })
     .eq("id", user.id);
   if (userError) {
-    return { success: false, error: userError.message };
+    return { success: false, error: traduireErreurDb(userError, "Impossible d'enregistrer votre profil pour le moment.") };
   }
 
   const { error: profilError } = await supabase
@@ -121,7 +123,7 @@ export async function mettreAJourProfilPrestataire(
     })
     .eq("user_id", user.id);
   if (profilError) {
-    return { success: false, error: profilError.message };
+    return { success: false, error: traduireErreurDb(profilError, "Impossible d'enregistrer votre profil pour le moment.") };
   }
 
   revalidatePath("/tableau-de-bord/compte");
@@ -173,7 +175,7 @@ export async function definirExceptionsDisponibilite(
     { onConflict: "prestataire_id,date" },
   );
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer vos disponibilités pour le moment.") };
   }
 
   revalidatePath("/tableau-de-bord/compte");
@@ -209,7 +211,7 @@ export async function supprimerExceptionsDisponibilite(dates: string[]): Promise
     .eq("prestataire_id", profil.id)
     .in("date", dates);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible de mettre à jour vos disponibilités pour le moment.") };
   }
 
   revalidatePath("/tableau-de-bord/compte");
@@ -261,7 +263,7 @@ export async function ajouterExperience(input: ExperienceInput): Promise<ActionR
     description: input.description.trim() || null,
   });
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer cette expérience pour le moment.") };
   }
 
   revalidatePath("/tableau-de-bord/compte");
@@ -296,7 +298,7 @@ export async function modifierExperience(
     })
     .eq("id", experienceId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible de modifier cette expérience pour le moment.") };
   }
 
   revalidatePath("/tableau-de-bord/compte");
@@ -314,7 +316,120 @@ export async function supprimerExperience(experienceId: string): Promise<ActionR
 
   const { error } = await supabase.from("experiences").delete().eq("id", experienceId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible de supprimer cette expérience pour le moment.") };
+  }
+
+  revalidatePath("/tableau-de-bord/compte");
+  return { success: true };
+}
+
+export type ProfilRecruteurInput = {
+  prenom: string;
+  nom: string;
+  telephone: string;
+  ville: string;
+  entreprise?: {
+    raisonSociale: string;
+    siret: string;
+    secteurActivite: string;
+  };
+};
+
+const SIRET_REGEX = /^\d{14}$/;
+
+/**
+ * Mise à jour du profil recruteur (particulier ou entreprise), depuis
+ * "Mon compte" — jusqu'ici en lecture seule côté recruteur (seul le
+ * prestataire avait un vrai formulaire d'édition). Même principe que
+ * mettreAJourProfilPrestataire : client session (RLS), `entreprises`
+ * n'est mis à jour que si le recruteur en a une (policy
+ * entreprises_update_own_or_admin, 0001_init.sql).
+ */
+export async function mettreAJourProfilRecruteur(input: ProfilRecruteurInput): Promise<ActionResult> {
+  if (!input.prenom.trim() || !input.nom.trim()) {
+    return { success: false, error: "Prénom et nom sont requis." };
+  }
+  if (input.entreprise) {
+    if (!input.entreprise.raisonSociale.trim() || !input.entreprise.secteurActivite.trim()) {
+      return { success: false, error: "Raison sociale et secteur d'activité sont requis." };
+    }
+    if (!SIRET_REGEX.test(input.entreprise.siret.trim())) {
+      return { success: false, error: "Le SIRET doit contenir exactement 14 chiffres." };
+    }
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const { error: userError } = await supabase
+    .from("users")
+    .update({
+      prenom: input.prenom.trim(),
+      nom: input.nom.trim(),
+      telephone: input.telephone.trim() || null,
+      ville: input.ville.trim() || null,
+    })
+    .eq("id", user.id);
+  if (userError) {
+    return { success: false, error: "Impossible d'enregistrer vos informations pour le moment. Réessayez dans un instant." };
+  }
+
+  if (input.entreprise) {
+    const { error: entrepriseError } = await supabase
+      .from("entreprises")
+      .update({
+        raison_sociale: input.entreprise.raisonSociale.trim(),
+        siret: input.entreprise.siret.trim(),
+        secteur_activite: input.entreprise.secteurActivite.trim(),
+      })
+      .eq("user_id", user.id);
+    if (entrepriseError) {
+      if (entrepriseError.code === "23514") {
+        return { success: false, error: "Le SIRET doit contenir exactement 14 chiffres." };
+      }
+      return { success: false, error: "Impossible d'enregistrer les informations de l'entreprise pour le moment." };
+    }
+  }
+
+  revalidatePath("/tableau-de-bord/compte");
+  return { success: true };
+}
+
+/**
+ * Enregistre le RIB du prestataire, nécessaire à la libération du
+ * paiement en fin de mission (0118). Validation par clé mod-97 côté
+ * serveur (jamais uniquement côté client) — voir lib/iban.ts.
+ */
+export async function modifierCoordonneesBancaires(iban: string, bic: string): Promise<ActionResult> {
+  const ibanNormalise = iban.replace(/\s+/g, "").toUpperCase();
+  const bicNormalise = bic.replace(/\s+/g, "").toUpperCase();
+
+  if (!ibanValide(ibanNormalise)) {
+    return { success: false, error: "IBAN invalide — vérifiez la saisie." };
+  }
+  if (!bicValide(bicNormalise)) {
+    return { success: false, error: "BIC/SWIFT invalide — vérifiez la saisie." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const { error } = await supabase
+    .from("prestataires_profils")
+    .update({ iban: ibanNormalise, bic: bicNormalise })
+    .eq("user_id", user.id);
+  if (error) {
+    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer vos coordonnées bancaires pour le moment.") };
   }
 
   revalidatePath("/tableau-de-bord/compte");

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getNotifications } from "@/lib/notifications";
@@ -6,6 +7,9 @@ import { Logo } from "@/components/layout/logo";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/app/actions/auth";
+
+// Audit final — double protection avec le Disallow de robots.ts.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 /**
  * Chrome commun (en-tête + navigation basse) du tableau de bord,

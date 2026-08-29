@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Hero } from "@/components/marketing/hero";
+import { PhotoBand } from "@/components/marketing/photo-band";
 import { SectorsSection } from "@/components/marketing/sectors-section";
+import { MultiMetiers } from "@/components/marketing/multi-metiers";
 import { StepsSection } from "@/components/marketing/steps-section";
 import { AudienceSplit } from "@/components/marketing/audience-split";
 import { VerifyBand } from "@/components/marketing/verify-band";
-import { TestimonialsSection } from "@/components/marketing/testimonials-section";
-import { CoverageBand } from "@/components/marketing/coverage-band";
 import { FinalCta } from "@/components/marketing/final-cta";
 
 export default async function Home() {
@@ -39,12 +39,12 @@ export default async function Home() {
   return (
     <>
       <Hero />
+      <PhotoBand />
       <SectorsSection />
+      <MultiMetiers />
       <StepsSection />
       <AudienceSplit />
       <VerifyBand />
-      <TestimonialsSection />
-      <CoverageBand />
       <FinalCta />
     </>
   );

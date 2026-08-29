@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { MAX_SPECIALITES } from "@/config/specialtyCategories";
+import { JOURS_SEMAINE } from "@/config/jours-semaine";
+
+export { JOURS_SEMAINE };
 
 export const STATUT_INDEPENDANT_VALUES = [
   "auto_entrepreneur",
@@ -16,7 +19,6 @@ export const STATUTS_INDEPENDANT = [
 export const CERTIFICATIONS_SECURITE = ["SSIAP", "SST", "Habilitation électrique"] as const;
 export const LANGUES_DISPONIBLES = ["Français", "Anglais", "Espagnol", "Arabe", "Mandarin"] as const;
 export const SECTEURS_VENTE = ["Boutique", "Restaurant", "Salon / Événementiel"] as const;
-export const JOURS_SEMAINE = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"] as const;
 
 export const prestataireSchema = z
   .object({

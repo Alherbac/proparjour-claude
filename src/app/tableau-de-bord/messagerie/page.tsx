@@ -15,7 +15,7 @@ export default async function MessagerieePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Messages</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Messages</h1>
 
       {conversations.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-background py-14 text-center">

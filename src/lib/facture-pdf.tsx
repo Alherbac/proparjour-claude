@@ -70,18 +70,20 @@ export function FacturePDF({
         </View>
 
         <View style={styles.section}>
-          {mission.lignes.map((ligne) => {
-            const metier = METIERS.find((m) => m.id === ligne.metier);
-            return (
-              <View key={ligne.id} style={styles.ligneRow}>
-                <Text>
-                  {ligne.prenom} {ligne.nom} — {metier?.label} (
-                  {ligne.heure_debut.slice(0, 5)}–{ligne.heure_fin.slice(0, 5)})
-                </Text>
-                <Text>{ligne.tarif_applique.toFixed(2)} €</Text>
-              </View>
-            );
-          })}
+          {mission.lignes
+            .filter((ligne) => ligne.statut_acceptation === "acceptee")
+            .map((ligne) => {
+              const metier = METIERS.find((m) => m.id === ligne.metier);
+              return (
+                <View key={ligne.id} style={styles.ligneRow}>
+                  <Text>
+                    {ligne.prenom} {ligne.nom} — {metier?.label} (
+                    {ligne.heure_debut.slice(0, 5)}–{ligne.heure_fin.slice(0, 5)})
+                  </Text>
+                  <Text>{ligne.tarif_applique.toFixed(2)} €</Text>
+                </View>
+              );
+            })}
         </View>
 
         <View style={styles.sousTotalRow}>

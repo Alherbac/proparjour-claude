@@ -10,6 +10,7 @@ import {
   recruteurSchema,
   type RecruteurFormValues,
 } from "@/components/onboarding/recruteur/schema";
+import { traduireErreurDb } from "@/lib/erreurs-db";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -52,7 +53,7 @@ export async function completerProfilPrestataire(
     .eq("id", user.id);
 
   if (userError) {
-    return { success: false, error: userError.message };
+    return { success: false, error: traduireErreurDb(userError, "Impossible d'enregistrer votre profil pour le moment.") };
   }
 
   const { data: profil, error: profilError } = await admin
@@ -78,7 +79,7 @@ export async function completerProfilPrestataire(
     .single();
 
   if (profilError || !profil) {
-    return { success: false, error: profilError?.message ?? "Échec de la création du profil." };
+    return { success: false, error: profilError ? traduireErreurDb(profilError, "Échec de la création du profil.") : "Échec de la création du profil." };
   }
 
   return { success: true, data: { profilId: profil.id } };
@@ -121,7 +122,7 @@ export async function completerProfilRecruteur(
     .eq("id", user.id);
 
   if (userError) {
-    return { success: false, error: userError.message };
+    return { success: false, error: traduireErreurDb(userError, "Impossible d'enregistrer votre profil pour le moment.") };
   }
 
   if (data.typeCompte === "entreprise") {
@@ -135,7 +136,10 @@ export async function completerProfilRecruteur(
       secteur_activite: data.secteurActivite,
     });
     if (entrepriseError) {
-      return { success: false, error: entrepriseError.message };
+      return {
+        success: false,
+        error: entrepriseError.code === "23514" ? "Le SIRET doit contenir exactement 14 chiffres." : traduireErreurDb(entrepriseError, "Impossible d'enregistrer les informations de l'entreprise."),
+      };
     }
   }
 

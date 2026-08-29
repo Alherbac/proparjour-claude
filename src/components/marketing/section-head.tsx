@@ -19,7 +19,7 @@ export function SectionHead({
         className={cn(
           "inline-flex items-center gap-[9px] font-mono-landing text-xs font-medium uppercase tracking-[0.12em] before:size-1.5 before:rounded-full before:content-['']",
           tone === "dark"
-            ? "text-white/50 before:bg-gold before:shadow-[0_0_0_4px_rgba(217,164,65,0.18)]"
+            ? "text-white/50 before:bg-primary before:shadow-[0_0_0_4px_oklch(0.55_0.215_25_/_0.22)]"
             : "text-muted-landing before:bg-emerald before:shadow-[0_0_0_4px_rgba(24,154,108,0.14)]",
         )}
       >

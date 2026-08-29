@@ -11,6 +11,7 @@ import {
   Briefcase,
   Megaphone,
   MessageSquare,
+  Wallet,
   Percent,
   FileText,
   BarChart3,
@@ -38,6 +39,7 @@ export type AdminBadges = {
   validations?: number;
   messages?: number;
   pilotage?: number;
+  suppressions?: number;
 };
 
 const GROUPES: { titre: string; modules: ModuleDef[] }[] = [
@@ -61,6 +63,7 @@ const GROUPES: { titre: string; modules: ModuleDef[] }[] = [
   {
     titre: "Finances",
     modules: [
+      { href: "/admin/versements", label: "Versements", icon: Wallet },
       { href: "/admin/commissions", label: "Commissions", icon: Percent },
       { href: "/admin/factures", label: "Factures", icon: FileText },
     ],
@@ -77,7 +80,7 @@ const GROUPES: { titre: string; modules: ModuleDef[] }[] = [
     modules: [
       { href: "/admin/villes", label: "Villes / zones", icon: MapPin },
       { href: "/admin/cgu", label: "CGU", icon: ScrollText },
-      { href: "/admin/suppressions", label: "Suppressions", icon: UserX },
+      { href: "/admin/suppressions", label: "Suppressions", icon: UserX, badgeKey: "suppressions" },
       { href: "/admin/export", label: "Export données", icon: Download },
       { href: "/admin/simulation", label: "Simulation", icon: Eye },
       { href: "/admin/parametres", label: "Paramètres", icon: Settings },

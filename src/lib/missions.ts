@@ -114,6 +114,22 @@ export async function getMissionPourFacture(
   };
 }
 
+/**
+ * Statut du paiement d'une mission, pour affichage neutre (badge,
+ * bouton "Payer") côté conversation — voir getLigneMissionPrestataire
+ * pour le même principe déjà établi : la table `paiements` n'a pas de
+ * policy SELECT pour un prestataire (confidentialité financière), donc
+ * on relit uniquement le statut via le client admin. Sûr à appeler
+ * pour n'importe quel rôle car la page appelante a déjà vérifié que
+ * l'utilisateur courant est un participant légitime de la mission
+ * (recruteur ou prestataire) avant d'afficher quoi que ce soit.
+ */
+export async function getStatutPaiementMission(missionId: string): Promise<PaiementStatutType | null> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("paiements").select("statut").eq("mission_id", missionId).maybeSingle();
+  return data?.statut ?? null;
+}
+
 export type LigneProposee = MissionLignesRow & {
   mission: MissionsRow;
   paiement: { statut: PaiementStatutType } | null;

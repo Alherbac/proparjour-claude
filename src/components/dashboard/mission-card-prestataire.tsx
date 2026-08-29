@@ -8,6 +8,11 @@ import type { LigneProposee } from "@/lib/missions";
 const STATUT_BADGE: Record<string, { label: string; style: string }> = {
   en_attente: { label: "🟠 À répondre", style: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
   refusee: { label: "🔴 Refusée", style: "bg-destructive/10 text-destructive" },
+  // Ligne jamais répondue par le prestataire, passée 'refusee' par le
+  // paiement une fois un(e) autre accepté(e) (migration 0040/0041) —
+  // "Refusée" impliquerait à tort un refus de sa part, alors qu'il/elle
+  // n'a simplement pas été retenu(e) pour cette mission déjà pourvue.
+  nonRetenue: { label: "⚪ Non retenu(e)", style: "bg-secondary text-muted-foreground" },
   confirmee: { label: "🟢 Confirmée", style: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
   declaree: { label: "🟢 Service déclaré", style: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
   terminee: { label: "✅ Terminée", style: "bg-secondary text-secondary-foreground" },
@@ -19,7 +24,7 @@ function statutCarte(ligne: LigneProposee): keyof typeof STATUT_BADGE {
   if (ligne.mission.statut === "annulee") return "annulee";
   if (ligne.mission.statut === "litige") return "litige";
   if (ligne.mission.statut === "terminee") return "terminee";
-  if (ligne.statut_acceptation === "refusee") return "refusee";
+  if (ligne.statut_acceptation === "refusee") return ligne.refus_automatique ? "nonRetenue" : "refusee";
   if (ligne.statut_acceptation === "en_attente") return "en_attente";
   if (ligne.service_fait) return "declaree";
   return "confirmee";

@@ -19,7 +19,7 @@ export default async function AdminOffresPage() {
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Offres</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Offres</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {offres.length} offre{offres.length > 1 ? "s" : ""} publiée{offres.length > 1 ? "s" : ""} sur le marché ouvert.
       </p>

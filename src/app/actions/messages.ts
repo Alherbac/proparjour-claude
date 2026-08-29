@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { creerNotification } from "@/lib/notifications";
 import { getMessagesNonLusPourMission } from "@/lib/messages";
+import { traduireErreurDb } from "@/lib/erreurs-db";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -81,7 +82,7 @@ export async function envoyerMessage(
     contenu: texte,
   });
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'envoyer le message pour le moment.") };
   }
 
   await creerNotification({

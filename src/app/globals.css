@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-serif);
   --font-heading: var(--font-serif);
@@ -84,27 +84,68 @@
   --shadow-landing-lg: 0 24px 60px -16px rgba(10, 15, 28, 0.28), 0 8px 20px -8px rgba(10, 15, 28, 0.14);
   --shadow-landing-card: 0 20px 48px -18px rgba(10, 15, 28, 0.35);
   --ease-landing: cubic-bezier(0.16, 0.84, 0.44, 1);
+
+  /* Refonte 110790prodesign (Lot 0) — système de design applicatif,
+     source de vérité pixel-exacte pour l'ensemble du produit (pas
+     seulement le marketing). Les tokens "landing" ci-dessus restent
+     en place tant que les composants marketing ne sont pas migrés
+     (Lot 1) — à supprimer une fois ce ménage fait, jamais avant. */
+  --font-display-serif: var(--font-display-serif);
+  --color-ppj-red: #E21D1B;
+  --color-ppj-red-hover: #B8130F;
+  --color-ppj-red-bg: #FDECEB;
+  --color-ppj-red-border: #F8D3D1;
+  --color-ppj-red-text: #8E2A26;
+  --color-ppj-ink: #1A1917;
+  --color-ppj-text-2: #565C64;
+  --color-ppj-neutral-text: #5F5B54;
+  --color-ppj-text-3: #7A756D;
+  --color-ppj-text-4: #98938B;
+  --color-ppj-text-5: #A8A29A;
+  --color-ppj-paper: #FBFAF8;
+  --color-ppj-field: #FCFBF9;
+  --color-ppj-fill: #F6F4F0;
+  --color-ppj-line: #EAE6E0;
+  --color-ppj-line-2: #EFEBE6;
+  --color-ppj-line-field: #E6E2DC;
+  --color-ppj-line-button: #DDD8D1;
+  --color-ppj-dark: #1A1917;
+  --color-ppj-dark-card: #1F2124;
+  --color-ppj-dark-line: #2E3135;
+  --color-ppj-dark-line-2: #383C41;
+  --color-ppj-dark-text: #A7ADB4;
+  --color-ppj-dark-text-2: #878E95;
+  --color-ppj-stripe-1: #F0ECE6;
+  --color-ppj-stripe-2: #E8E3DC;
+  --shadow-ppj-bar: 0 24px 48px -32px rgba(26, 25, 23, 0.34);
+  --shadow-ppj-card: 0 26px 48px -34px rgba(26, 25, 23, 0.45);
+  --shadow-ppj-float: 0 24px 48px -20px rgba(26, 25, 23, 0.45);
+  --ease-ppj: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.55 0.215 25);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.55 0.215 25 / 0.5);
+  /* Refonte 110790prodesign (Lot 0) — tokens sémantiques shadcn
+     repointés sur le nouveau système (valeurs pixel-exactes du
+     README, pas d'approximation oklch) : c'est ce bloc qui change
+     l'apparence de Button/Input/Badge/Card partout dans l'app. */
+  --background: #FBFAF8;
+  --foreground: #1A1917;
+  --card: #FFFFFF;
+  --card-foreground: #1A1917;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1917;
+  --primary: #E21D1B;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F6F4F0;
+  --secondary-foreground: #1A1917;
+  --muted: #F6F4F0;
+  --muted-foreground: #7A756D;
+  --accent: #F6F4F0;
+  --accent-foreground: #1A1917;
+  --destructive: #E21D1B;
+  --border: #EAE6E0;
+  --input: #EAE6E0;
+  --ring: #E21D1B;
   --color-cream: oklch(0.965 0.025 78);
   --color-cream-foreground: oklch(0.22 0.02 40);
   --chart-1: oklch(0.87 0 0);
@@ -112,7 +153,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: 0.875rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -171,6 +212,26 @@
   }
 }
 
+@keyframes ppjPan {
+  from {
+    transform: translateX(0) scale(1.04);
+  }
+  to {
+    transform: translateX(-5%) scale(1.12);
+  }
+}
+
+@keyframes ppjUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes marquee-scroll {
   from {
     transform: translateX(0);
@@ -226,17 +287,17 @@
    une identité de marque fixe (paper/ink), indépendante du mode
    sombre applicatif qui ne concerne que le dashboard/admin. */
 .theme-pin-light {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --ring: oklch(0.55 0.215 25 / 0.5);
+  --background: #FBFAF8;
+  --foreground: #1A1917;
+  --muted: #F6F4F0;
+  --muted-foreground: #7A756D;
+  --border: #EAE6E0;
+  --input: #EAE6E0;
+  --accent: #F6F4F0;
+  --accent-foreground: #1A1917;
+  --secondary: #F6F4F0;
+  --secondary-foreground: #1A1917;
+  --ring: #E21D1B;
 }
 
 .hero-grain {

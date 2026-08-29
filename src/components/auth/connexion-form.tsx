@@ -11,6 +11,7 @@ import { FormField } from "@/components/onboarding/form-field";
 import { GoogleButton } from "@/components/onboarding/recruteur/google-button";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
+import { verifierLimiteConnexion } from "@/app/actions/auth";
 
 export function ConnexionForm() {
   const router = useRouter();
@@ -26,6 +27,13 @@ export function ConnexionForm() {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
+
+    const limite = await verifierLimiteConnexion(email);
+    if (!limite.autorise) {
+      setError(limite.erreur ?? "Trop de tentatives. Réessayez dans quelques minutes.");
+      setSubmitting(false);
+      return;
+    }
 
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({

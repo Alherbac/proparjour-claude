@@ -1,14 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 import { SPECIALTY_CATEGORIES } from "@/config/specialtyCategories";
 import { METIERS, type MetierId } from "@/config/metiers";
+import type { JourSemaine } from "@/config/jours-semaine";
 import type { PrestatairesPublicsRow } from "@/lib/supabase/database.types";
+import { normaliserTexte, motsProches } from "@/lib/similarite-texte";
+import { detecterMetier as detecterMetierParMotsCles } from "@/lib/besoin";
 
 export const RESULTATS_PAR_PAGE = 12;
 
 export type RechercheFiltres = {
   metier?: MetierId;
   ville?: string;
-  jour?: string;
+  // Format canonique de prestataires_profils.disponibilites (voir
+  // config/jours-semaine.ts) — non "lundi" en toutes lettres. Ce
+  // filtre n'est actuellement appelé par aucune page.
+  jour?: JourSemaine;
   tarifMin?: number;
   tarifMax?: number;
   q?: string;
@@ -30,10 +36,7 @@ function retirerSuffixeGenre(s: string): string {
 }
 
 function normaliser(s: string): string {
-  return retirerSuffixeGenre(s)
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  return normaliserTexte(retirerSuffixeGenre(s));
 }
 
 /** Variantes de rôle qui ne partagent pas la racine orthographique de la spécialité visée. */
@@ -59,8 +62,9 @@ function tokeniser(s: string): string[] {
     .map(radical);
 }
 
+/** Tolère une faute de frappe simple (voir motsProches) — "securyte" doit toujours trouver "securite". */
 function partagentUnMot(tokensA: string[], tokensB: string[]): boolean {
-  return tokensA.some((a) => tokensB.includes(a));
+  return tokensA.some((a) => tokensB.some((b) => motsProches(a, b)));
 }
 
 function specialitesCorrespondantes(q: string): string[] {
@@ -97,8 +101,15 @@ function metierCorrespondant(q: string): MetierId | null {
   const needle = tokeniser(q);
   if (needle.length === 0) return null;
 
-  let meilleurMetier: MetierId | null = null;
+  // Une spécialité d'une filière peut mentionner en passant le mot
+  // d'une autre ("Accueil Sécurisé / VIP" est une spécialité
+  // Sécurité qui contient "accueil") : à score de couverture égal
+  // entre plusieurs filières, l'ordre du tableau METIERS ne doit pas
+  // trancher arbitrairement — on garde tous les ex-aequo et on les
+  // départage via le vocabulaire courant (lib/besoin.ts) avant de se
+  // rabattre sur le premier.
   let meilleurScore = 0;
+  let exAequo: MetierId[] = [];
   for (const metier of METIERS) {
     const phrasesSpecialites = SPECIALTY_CATEGORIES[metier.id].flatMap((categorie) =>
       categorie.specialites.map(tokeniser),
@@ -106,10 +117,24 @@ function metierCorrespondant(q: string): MetierId | null {
     const score = couvertureMax(needle, phrasesSpecialites);
     if (score > meilleurScore) {
       meilleurScore = score;
-      meilleurMetier = metier.id;
+      exAequo = [metier.id];
+    } else if (score === meilleurScore && score > 0) {
+      exAequo.push(metier.id);
     }
   }
-  if (meilleurMetier) return meilleurMetier;
+
+  const parMotsCles = detecterMetierParMotsCles(normaliser(q));
+
+  if (exAequo.length === 1) return exAequo[0];
+  if (exAequo.length > 1) {
+    return parMotsCles && exAequo.includes(parMotsCles) ? parMotsCles : exAequo[0];
+  }
+
+  // Aucune spécialité exacte touchée : se rabat sur le vocabulaire
+  // courant partagé avec le parcours besoin (lib/besoin.ts) —
+  // "vendeuse", "vigile", "hôtesse"... des synonymes du quotidien
+  // plus larges que les intitulés précis de la taxonomie.
+  if (parMotsCles) return parMotsCles;
 
   for (const metier of METIERS) {
     const motsMetier = [...tokeniser(metier.label), ...tokeniser(metier.filiere)];
@@ -173,11 +198,16 @@ export async function rechercherPrestataires(filtres: RechercheFiltres) {
   // désactivée dans ce cas et appliquée après tri.
   const classerEnJs = Boolean(texteRecherche && metierInfere);
 
-  const [{ data, count, error }, { data: enMission }] = await Promise.all([
+  const [{ data, count, error }, { data: enMission }, { data: fiabiliteData }, { data: avisData }] = await Promise.all([
     classerEnJs
       ? query.order("created_at", { ascending: false })
       : query.order("created_at", { ascending: false }).range(from, to),
     supabase.rpc("prestataires_en_mission_ids"),
+    // "Historique de missions" de la vignette (§7, point 8) — même RPC
+    // déjà exposée publiquement et déjà utilisée par lib/matching.ts,
+    // aucune nouvelle migration nécessaire.
+    supabase.rpc("prestataires_fiabilite"),
+    supabase.rpc("avis_moyenne_prestataires"),
   ]);
 
   let resultats = data ?? [];
@@ -197,5 +227,11 @@ export async function rechercherPrestataires(filtres: RechercheFiltres) {
     totalPages: Math.max(1, Math.ceil(total / RESULTATS_PAR_PAGE)),
     error,
     enMissionIds: new Set((enMission ?? []).map((r) => r.prestataire_id)),
+    missionsTermineesParId: new Map((fiabiliteData ?? []).map((f) => [f.prestataire_id, f.missions_terminees])),
+    avisParId: new Map((avisData ?? []).map((a) => [a.prestataire_id, { noteMoyenne: a.note_moyenne, nbAvis: a.nb_avis }])),
+    // Métier réellement appliqué au filtrage — explicite (chip) ou
+    // déduit du mot-clé libre — pour que la page affiche le vrai nom
+    // de filière (config/metiers.ts) plutôt qu'un intitulé générique.
+    metierActif: filtres.metier ?? metierInfere ?? null,
   };
 }

@@ -53,7 +53,7 @@ export default async function AdminPilotagePage({
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Pilotage & Alertes</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Pilotage & Alertes</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Centre de pilotage stratégique — classements, alertes et répartition géographique.
       </p>

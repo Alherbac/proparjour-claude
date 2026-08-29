@@ -32,11 +32,24 @@ export function calculerScoreRisque(params: {
 
 type ConnexionMap = Map<string, string | null>;
 
+/**
+ * Parcourt toutes les pages de l'API Auth (listUsers est paginée à
+ * 200 par défaut) — sans cette boucle, toute donnée d'inactivité au-
+ * delà des 200 premiers comptes créés serait silencieusement absente,
+ * ce qui viole "chaque chiffre doit être réel" dès que la base dépasse
+ * ce seuil.
+ */
 async function getDernieresConnexions(admin: ReturnType<typeof createAdminClient>): Promise<ConnexionMap> {
   const map: ConnexionMap = new Map();
-  const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
-  for (const u of data?.users ?? []) {
-    map.set(u.id, u.last_sign_in_at ?? null);
+  let page = 1;
+  for (;;) {
+    const { data } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    const users = data?.users ?? [];
+    for (const u of users) {
+      map.set(u.id, u.last_sign_in_at ?? null);
+    }
+    if (users.length < 1000) break;
+    page += 1;
   }
   return map;
 }
@@ -261,4 +274,72 @@ export async function getRepartitionGeographique(): Promise<RepartitionVille[]> 
   return [...compteur.entries()]
     .map(([ville, nbPrestataires]) => ({ ville, nbPrestataires }))
     .sort((a, b) => b.nbPrestataires - a.nbPrestataires);
+}
+
+export type VilleOffreDemande = { ville: string; nbPrestataires: number; nbMissions: number };
+
+/**
+ * Extrait la ville d'un `missions.lieu` ("Salle Wagram, Paris" → "Paris")
+ * — ce champ est une adresse libre saisie via l'autocomplete adresse
+ * (numéro/lieu-dit + ville), pas une ville seule comme
+ * `prestataires_profils.ville`. Repose sur le format observé en base
+ * ("<lieu précis>, <ville>") : si aucune virgule n'est présente, le
+ * lieu entier est gardé tel quel plutôt que de risquer une extraction
+ * fausse.
+ */
+function villeDepuisLieu(lieu: string): string {
+  const segments = lieu.split(",");
+  return segments.length > 1 ? segments[segments.length - 1].trim() : lieu.trim();
+}
+
+/** Regroupe par ville en ignorant casse/espaces superflus (données saisies librement) — clé de retour toujours en minuscules, affichage résolu séparément. */
+function grouperParVilleNormalisee(villesBrutes: (string | null)[], repli: string): Map<string, number> {
+  const compteur = new Map<string, number>();
+  for (const brut of villesBrutes) {
+    const cle = (brut?.trim() || repli).toLowerCase();
+    compteur.set(cle, (compteur.get(cle) ?? 0) + 1);
+  }
+  return compteur;
+}
+
+/**
+ * Offre (prestataires) vs demande (missions) par ville — identifie
+ * les "zones sous-couvertes" (cahier des charges §3.10, aide à la
+ * décision) : une ville avec beaucoup de missions et peu de
+ * prestataires est un signal de recrutement prioritaire.
+ */
+export async function getOffreDemandeParVille(): Promise<VilleOffreDemande[]> {
+  const admin = createAdminClient();
+  const [{ data: profils }, { data: missions }] = await Promise.all([
+    admin.from("prestataires_profils").select("ville"),
+    admin.from("missions").select("lieu"),
+  ]);
+
+  const villesPrestataires = (profils ?? []).map((p) => p.ville);
+  const villesMissions = (missions ?? []).map((m) => villeDepuisLieu(m.lieu));
+
+  const prestatairesParVille = grouperParVilleNormalisee(villesPrestataires, "non renseignée");
+  const missionsParVille = grouperParVilleNormalisee(villesMissions, "non renseigné");
+
+  // Affichage : première casse/orthographe rencontrée pour chaque clé
+  // minuscule, toutes sources confondues.
+  const affichageParCle = new Map<string, string>();
+  for (const brut of [...villesPrestataires, ...villesMissions]) {
+    const valeur = brut?.trim();
+    if (!valeur) continue;
+    const cle = valeur.toLowerCase();
+    if (!affichageParCle.has(cle)) affichageParCle.set(cle, valeur);
+  }
+  affichageParCle.set("non renseignée", "Non renseignée");
+  affichageParCle.set("non renseigné", "Non renseigné");
+
+  const toutesLesCles = new Set([...prestatairesParVille.keys(), ...missionsParVille.keys()]);
+
+  return [...toutesLesCles]
+    .map((cle) => ({
+      ville: affichageParCle.get(cle) ?? cle,
+      nbPrestataires: prestatairesParVille.get(cle) ?? 0,
+      nbMissions: missionsParVille.get(cle) ?? 0,
+    }))
+    .sort((a, b) => b.nbMissions - a.nbMissions);
 }

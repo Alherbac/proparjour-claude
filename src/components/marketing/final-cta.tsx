@@ -1,46 +1,44 @@
-import Link from "next/link";
-import { UserPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { RevealOnScroll } from "@/components/motion/reveal-on-scroll";
-import {
-  LANDING_BTN_ARROW,
-  LANDING_BTN_BASE,
-  LANDING_BTN_GHOST_LIGHT,
-  LANDING_BTN_PRIMARY,
-} from "@/components/marketing/button-styles";
-import { cn } from "@/lib/utils";
+"use client";
 
+/**
+ * Refonte Claude Istanbul 1, §4.9 — CTA final. Les deux boutons
+ * sélectionnent l'onglet correspondant de la barre recherche/
+ * publication (HeroSearchBar, plus haut sur la même page) et
+ * ramènent à la hero — même mécanisme d'événement que le bouton
+ * « Voir sur un exemple » de MultiMetiers.
+ */
 export function FinalCta() {
+  function allerVers(tab: "recherche" | "publier") {
+    window.dispatchEvent(new CustomEvent("proparjour:switch-tab", { detail: { tab } }));
+    document.getElementById("recherche")?.scrollIntoView({ behavior: "smooth" });
+  }
+
   return (
-    <section className="px-10 pb-[140px] pt-[120px] text-center max-[900px]:px-6">
-      <RevealOnScroll className="mx-auto max-w-[1200px]">
-        <span className="inline-flex items-center justify-center gap-[9px] font-mono-landing text-xs font-medium uppercase tracking-[0.12em] text-muted-landing before:size-1.5 before:rounded-full before:bg-emerald before:shadow-[0_0_0_4px_rgba(24,154,108,0.14)] before:content-['']">
-          Prêt en quelques minutes
-        </span>
-        <h2 className="mx-auto mt-5 mb-[18px] max-w-[660px] text-[42px] font-semibold text-ink">
-          Trouvez votre prestataire du jour, ou votre prochaine mission.
+    <section className="border-t border-ppj-line-2 bg-white" style={{ padding: "clamp(72px,9vw,128px) 0" }}>
+      <div className="mx-auto max-w-[780px] px-6 text-center">
+        <h2
+          className="mb-7 text-ppj-ink"
+          style={{ fontFamily: "var(--font-display-serif)", fontSize: "clamp(34px,4.4vw,60px)", lineHeight: 1.02, letterSpacing: "-0.022em" }}
+        >
+          De quoi avez-vous besoin aujourd&apos;hui ?
         </h2>
-        <p className="mx-auto mb-9 max-w-[500px] text-[16.5px] text-muted-landing">
-          Recrutement, contrat, facturation et paiement — tout au même endroit,
-          vérifié à chaque étape.
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button
-            render={<Link href="/prestataires" />}
-            className={cn(LANDING_BTN_BASE, LANDING_BTN_PRIMARY, "group")}
+        <div className="flex flex-wrap justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => allerVers("recherche")}
+            className="min-h-[54px] rounded-[14px] bg-primary px-7 text-base font-semibold text-white transition-[background-color,transform] hover:-translate-y-px hover:bg-[#B8130F]"
           >
-            Je recrute un prestataire
-            <span className={LANDING_BTN_ARROW}>→</span>
-          </Button>
-          <Button
-            render={<Link href="/inscription/prestataire" />}
-            className={cn(LANDING_BTN_BASE, LANDING_BTN_GHOST_LIGHT)}
+            Rechercher un professionnel
+          </button>
+          <button
+            type="button"
+            onClick={() => allerVers("publier")}
+            className="min-h-[54px] rounded-[14px] border border-ppj-line-button bg-white px-7 text-base font-semibold text-ppj-ink transition-[border-color,transform] hover:-translate-y-px hover:border-ppj-ink"
           >
-            <UserPlus className="size-4" />
-            Je deviens prestataire
-          </Button>
+            Publier mon besoin
+          </button>
         </div>
-      </RevealOnScroll>
+      </div>
     </section>
   );
 }

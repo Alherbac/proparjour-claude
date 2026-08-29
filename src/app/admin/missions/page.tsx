@@ -64,7 +64,7 @@ export default async function AdminMissionsPage({
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Missions</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Missions</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {total} mission{total !== 1 ? "s" : ""}.
       </p>

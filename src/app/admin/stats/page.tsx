@@ -1,10 +1,23 @@
 import type { Metadata } from "next";
 import { requireAdminSession } from "@/lib/admin/auth";
-import { ModuleAVenir } from "@/components/admin/module-a-venir";
+import { getRepartitionParMetier, getRepartitionStatutMissions } from "@/lib/admin/statistiques";
+import { StatistiquesScreen } from "@/components/admin/statistiques-screen";
 
 export const metadata: Metadata = { title: "Statistiques — Admin ProParJour" };
 
 export default async function AdminStatsPage() {
   await requireAdminSession();
-  return <ModuleAVenir titre="Statistiques" lot="Lot 5 — Pilotage stats" />;
+  const [repartitionMetier, { parStatut, total, tauxAnnulation }] = await Promise.all([
+    getRepartitionParMetier(),
+    getRepartitionStatutMissions(),
+  ]);
+
+  return (
+    <StatistiquesScreen
+      repartitionMetier={repartitionMetier}
+      repartitionStatut={parStatut}
+      total={total}
+      tauxAnnulation={tauxAnnulation}
+    />
+  );
 }

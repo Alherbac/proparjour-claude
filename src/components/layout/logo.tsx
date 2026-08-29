@@ -1,21 +1,30 @@
 import Link from "next/link";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
+/**
+ * Logo du dashboard/admin (sidebar) — logo fourni + mot-symbole en
+ * Instrument Serif (refonte 110790prodesign, Lot 0), remplace le
+ * carré "P" précédent.
+ */
 export function Logo({ className }: { className?: string }) {
   return (
     <Link
       href="/"
       className={cn(
-        "flex items-center gap-2 shrink-0 font-heading",
+        "flex items-center gap-[9px] shrink-0 font-display-serif text-xl leading-none tracking-tight text-foreground",
         className,
       )}
     >
-      <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground text-lg font-semibold">
-        P
-      </span>
-      <span className="text-xl font-semibold tracking-tight text-foreground">
-        Pro<span className="text-primary">Par</span>Jour
-      </span>
+      <Image
+        src="/proparjour-logo.png"
+        alt="ProParJour"
+        width={112}
+        height={96}
+        style={{ height: 24, width: "auto" }}
+        className="object-contain"
+      />
+      ProParJour
     </Link>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ClipboardList, Wallet, UserRound, MessageCircle } from "lucide-react";
@@ -23,9 +24,33 @@ const LIENS_RECRUTEUR = [
 export function BottomNav({ role }: { role: "prestataire" | "recruteur" }) {
   const pathname = usePathname();
   const LIENS = role === "recruteur" ? LIENS_RECRUTEUR : LIENS_PRESTATAIRE;
+  const navRef = useRef<HTMLElement>(null);
+
+  // Audit final — CookieConsentBanner est aussi "fixed inset-x-0
+  // bottom-0", pleine largeur : sans coordination, il se superposait
+  // exactement à cette navigation tant que le visiteur n'avait pas
+  // répondu (trouvé en testant réellement un premier passage sur le
+  // site) — soit la navigation était masquée dessous, soit un simple
+  // z-index supérieur ici aurait à son tour caché les boutons du
+  // bandeau de cookies. Cette variable CSS publie la hauteur réelle de
+  // la nav ; CookieConsentBanner s'en sert pour se poser juste
+  // au-dessus plutôt que de se superposer — les deux restent entièrement
+  // visibles et cliquables en même temps. Remise à 0 au démontage
+  // (navigation vers une page sans cette barre).
+  useEffect(() => {
+    const definir = () => {
+      document.documentElement.style.setProperty("--ppj-bottom-nav-h", `${navRef.current?.offsetHeight ?? 0}px`);
+    };
+    definir();
+    window.addEventListener("resize", definir);
+    return () => {
+      window.removeEventListener("resize", definir);
+      document.documentElement.style.setProperty("--ppj-bottom-nav-h", "0px");
+    };
+  }, []);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
+    <nav ref={navRef} className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex max-w-3xl items-stretch">
         {LIENS.map((lien) => {
           const actif = "exact" in lien && lien.exact ? pathname === lien.href : pathname.startsWith(lien.href);

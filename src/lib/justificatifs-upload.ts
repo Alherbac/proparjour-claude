@@ -27,7 +27,7 @@ export async function uploaderEtEnregistrerJustificatif(
     .from("justificatifs")
     .upload(chemin, file, { contentType: file.type });
   if (uploadError) {
-    return { success: false, error: uploadError.message };
+    return { success: false, error: "Impossible d'envoyer ce document pour le moment." };
   }
 
   return enregistrerJustificatif(profilId, typeDocument, chemin);

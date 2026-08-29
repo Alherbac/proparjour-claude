@@ -1,24 +1,20 @@
 import Link from "next/link";
-import { LayoutDashboard } from "lucide-react";
 import { HeaderShell } from "@/components/layout/header-shell";
 import { MarketingLogo } from "@/components/marketing/marketing-logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { PanierIndicator } from "@/components/layout/panier-indicator";
 import { NotificationBell } from "@/components/layout/notification-bell";
-import { Button } from "@/components/ui/button";
-import {
-  LANDING_BTN_BASE,
-  LANDING_BTN_HEADER_SIZE,
-  LANDING_BTN_PRIMARY,
-} from "@/components/marketing/button-styles";
-import { cn } from "@/lib/utils";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { createClient } from "@/lib/supabase/server";
 import { getNotifications } from "@/lib/notifications";
 
+// Refonte Claude Istanbul 1, §4.1 : "Les métiers" / "Comment ça
+// marche" / "Vous êtes professionnel" — mêmes ancres que les
+// sections de la landing (Lot 2+).
 const NAV_LINKS = [
-  { href: "/#comment", label: "Comment ça marche" },
-  { href: "/#recruter", label: "Entreprises" },
-  { href: "/prestataires", label: "Prestataires" },
+  { href: "/#metiers", label: "Les métiers" },
+  { href: "/#fonctionnement", label: "Comment ça marche" },
+  { href: "/#professionnels", label: "Vous êtes professionnel" },
 ];
 
 export async function Header() {
@@ -27,54 +23,71 @@ export async function Header() {
     data: { user },
   } = await supabase.auth.getUser();
   const notifications = user ? await getNotifications() : [];
+  const profil = user
+    ? (await supabase.from("users").select("prenom, nom").eq("id", user.id).maybeSingle()).data
+    : null;
+  const initiales =
+    ((profil?.prenom?.[0] ?? "") + (profil?.nom?.[0] ?? "")).toUpperCase() ||
+    (user?.email ? user.email.slice(0, 2).toUpperCase() : "?");
 
   return (
     <HeaderShell>
-      <div className="mx-auto flex h-[76px] max-w-[1200px] items-center justify-between px-10 max-[900px]:px-6">
-        <MarketingLogo />
+      <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-2 px-6 py-3.5 max-[400px]:px-4">
+        <MarketingLogo className="max-[360px]:text-[18px]" />
 
         <nav className="flex items-center gap-9 max-[900px]:hidden">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-ink/62 transition-opacity hover:opacity-100 hover:text-ink"
+              className="text-[14.5px] font-medium text-ppj-text-2 transition-colors hover:text-ppj-ink"
             >
               {link.label}
             </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-2.5">
-          <ThemeToggle />
+        <div className="flex min-w-0 shrink items-center gap-2.5 max-[400px]:gap-1.5">
+          <div className="hidden sm:block">
+            <ThemeToggle />
+          </div>
           <PanierIndicator />
           {user ? (
             <>
               <NotificationBell userId={user.id} notificationsInitiales={notifications} />
-              <Button
-                render={<Link href="/tableau-de-bord" />}
-                className={cn(LANDING_BTN_BASE, LANDING_BTN_PRIMARY, LANDING_BTN_HEADER_SIZE)}
+              <Link
+                href="/tableau-de-bord"
+                className="hidden text-[14.5px] font-medium text-ppj-text-2 transition-colors hover:text-ppj-ink max-[900px]:hidden sm:block"
               >
-                <LayoutDashboard className="size-4" />
-                Tableau de bord
-              </Button>
+                Mes missions
+              </Link>
+              <Link
+                href="/tableau-de-bord"
+                className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-ppj-ink text-[13px] font-semibold text-white"
+                aria-label="Mon compte"
+              >
+                {initiales}
+              </Link>
             </>
           ) : (
             <>
-              <Button
-                render={<Link href="/inscription" />}
-                className={cn(LANDING_BTN_BASE, LANDING_BTN_PRIMARY, LANDING_BTN_HEADER_SIZE)}
-              >
-                Créer mon compte
-              </Button>
               <Link
                 href="/connexion"
-                className="hidden text-sm font-medium text-ink/62 transition-opacity hover:opacity-100 hover:text-ink sm:block"
+                className="text-[14.5px] font-medium text-ppj-text-2 transition-colors hover:text-ppj-ink max-[900px]:hidden"
               >
-                Me connecter
+                Se connecter
+              </Link>
+              <Link
+                href="/inscription"
+                className="whitespace-nowrap rounded-[10px] bg-ppj-ink px-4 py-2.5 text-[14.5px] font-semibold text-white transition-colors hover:bg-primary max-[400px]:px-3 max-[400px]:text-[12.5px]"
+              >
+                Créer un compte
               </Link>
             </>
           )}
+          <div className="min-[900px]:hidden">
+            <MobileNav estConnecte={Boolean(user)} />
+          </div>
         </div>
       </div>
     </HeaderShell>

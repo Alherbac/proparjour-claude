@@ -1,202 +1,177 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { loadStripe, type Stripe } from "@stripe/stripe-js";
-import { Elements } from "@stripe/react-stripe-js";
-import { Trash2, ShoppingCart, MapPin, CalendarDays, Home } from "lucide-react";
+import { Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { METIERS } from "@/config/metiers";
+import { METIERS, type MetierId } from "@/config/metiers";
 import { usePanier } from "@/hooks/use-panier";
-import { montantLigne, retirerLigne, basculerSelectionLigne, totalPanier } from "@/lib/panier";
-import { creerIntentionPaiement } from "@/app/actions/commande";
-import { CheckoutForm } from "@/components/panier/checkout-form";
+import { retirerLigne } from "@/lib/panier";
 
-let stripePromise: Promise<Stripe | null> | null = null;
-function getStripePromise() {
-  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-  if (!key) return null;
-  stripePromise ??= loadStripe(key);
-  return stripePromise;
-}
-
+/**
+ * "proparjour 6-7" §8 (RÉVISÉ) — le panier redevient une simple liste
+ * de personnes retenues : aucun détail de mission (date/horaires/lieu
+ * ont disparu de la ligne, voir lib/panier.ts), aucun total, et
+ * surtout aucun paiement ici — le bouton "Payer et créer les
+ * missions" de l'ancienne version était explicitement désigné par le
+ * README comme une erreur ("il court-circuite l'accord du
+ * professionnel"). Un seul bouton : "Proposer la mission", qui mène à
+ * /panier/proposer où le détail (commun + par métier) se saisit une
+ * fois pour toutes avant l'envoi.
+ */
 export function PanierContent() {
   const panier = usePanier();
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [montant, setMontant] = useState<number | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
-  const [demandeAuth, setDemandeAuth] = useState(false);
-  const [chargement, setChargement] = useState(false);
-
-  const lignesAvecIndex = panier.lignes.map((ligne, index) => ({ ligne, index }));
-  const lignesSelectionnees = lignesAvecIndex.filter(({ ligne }) => ligne.selectionnee);
-  const total = totalPanier({ lignes: lignesSelectionnees.map(({ ligne }) => ligne) });
-  const stripePromise = getStripePromise();
-
-  async function handleProcederPaiement() {
-    setErreur(null);
-    setDemandeAuth(false);
-    setChargement(true);
-    const result = await creerIntentionPaiement(lignesSelectionnees.map(({ ligne }) => ligne));
-    setChargement(false);
-    if (!result.success) {
-      if (result.requiresAuth) {
-        setDemandeAuth(true);
-      } else {
-        setErreur(result.error);
-      }
-      return;
-    }
-    setClientSecret(result.data.clientSecret);
-    setMontant(result.data.montant);
-  }
 
   if (panier.lignes.length === 0) {
     return (
-      <div className="mx-auto flex max-w-xl flex-col items-center gap-3 px-4 py-20 text-center">
-        <ShoppingCart className="size-10 text-muted-foreground" />
-        <h1 className="font-heading text-2xl font-semibold text-foreground">
-          Votre panier est vide
-        </h1>
-        <p className="text-muted-foreground">
-          Parcourez les profils et ajoutez des prestataires pour composer votre mission.
+      <div className="mx-auto max-w-2xl px-4 py-14 lg:px-8">
+        <p
+          className="mb-1.5 text-ppj-ink"
+          style={{ fontFamily: "var(--font-display-serif)", fontSize: "40px", lineHeight: 1.04, letterSpacing: "-0.02em" }}
+        >
+          Votre panier
         </p>
-        <Button render={<Link href="/prestataires" />} className="mt-2 rounded-full">
-          Trouver un prestataire
-        </Button>
+        <div className="mt-6 rounded-[20px] border border-ppj-line bg-white px-7 py-14 text-center">
+          <span
+            className="inline-grid size-12 place-items-center rounded-[14px] border border-ppj-line bg-ppj-field text-[22px] text-ppj-text-5"
+            style={{ fontFamily: "var(--font-display-serif)" }}
+          >
+            —
+          </span>
+          <p
+            className="mx-auto mt-4 mb-2 text-ppj-ink"
+            style={{ fontFamily: "var(--font-display-serif)", fontSize: "26px", letterSpacing: "-0.01em" }}
+          >
+            Votre panier est vide
+          </p>
+          <p className="mx-auto mb-5 max-w-[34em] text-[14.5px] leading-[1.6] text-ppj-text-3">
+            Ajoutez des professionnels depuis les résultats de recherche, ou décrivez votre besoin en une phrase.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button
+              render={<Link href="/prestataires?mode=recherche" />}
+              className="min-h-12 rounded-[13px] bg-primary px-[22px] text-[15px] font-semibold text-white hover:bg-[#B8130F]"
+            >
+              Rechercher un professionnel
+            </Button>
+            <Button
+              render={<Link href="/prestataires?mode=publier" />}
+              variant="outline"
+              className="min-h-12 rounded-[13px] border-ppj-line-button px-[22px] text-[15px] font-semibold text-ppj-ink hover:border-ppj-ink"
+            >
+              Publier mon besoin
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
 
+  const parMetier = new Map<MetierId, number>();
+  for (const ligne of panier.lignes) {
+    parMetier.set(ligne.metier, (parMetier.get(ligne.metier) ?? 0) + 1);
+  }
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 lg:px-8 lg:py-14">
+    <div className="mx-auto max-w-5xl px-4 py-10 lg:px-8 lg:py-14">
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex items-center gap-1.5 text-sm text-ppj-text-3 transition-colors hover:text-ppj-ink"
       >
         <Home className="size-3.5" />
         Retour à l&apos;accueil
       </Link>
 
-      <h1 className="mt-4 font-heading text-3xl font-semibold text-foreground">Mon panier</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Décochez un prestataire pour l&apos;envoyer plus tard plutôt que maintenant.
+      <p
+        className="mt-4 mb-1.5 text-ppj-ink"
+        style={{ fontFamily: "var(--font-display-serif)", fontSize: "40px", lineHeight: 1.04, letterSpacing: "-0.02em" }}
+      >
+        Votre panier
+      </p>
+      <p className="max-w-[62ch] text-[15px] text-ppj-text-3">
+        Les professionnels que vous avez retenus. Rien ne leur est encore envoyé : vous décrivez la mission à l&apos;étape
+        suivante, puis chacun accepte ou décline.
       </p>
 
-      <ul className="mt-6 space-y-3">
-        {lignesAvecIndex.map(({ ligne, index }) => {
-          const metier = METIERS.find((m) => m.id === ligne.metier);
-          return (
-            <li
-              key={`${ligne.prestataireId}-${index}`}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-background p-4"
-            >
-              <Link href={`/prestataires/${ligne.prestataireId}`} className="shrink-0">
-                {ligne.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- pas d'autre usage de next/image dans ce projet
-                  <img
-                    src={ligne.photoUrl}
-                    alt={ligne.prenom}
-                    className="size-11 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex size-11 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-foreground/70">
-                    {ligne.prenom.charAt(0)}
+      <div
+        className="mt-7 grid items-start gap-[22px]"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))" }}
+      >
+        <div className="grid gap-3">
+          {panier.lignes.map((ligne, index) => {
+            const metier = METIERS.find((m) => m.id === ligne.metier);
+            return (
+              <div key={`${ligne.prestataireId}-${index}`} className="rounded-2xl border border-ppj-line bg-white p-[18px]">
+                <div className="flex flex-wrap items-center gap-3.5">
+                  {ligne.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- pas d'autre usage de next/image dans ce projet
+                    <img src={ligne.photoUrl} alt={ligne.prenom} className="size-[46px] shrink-0 rounded-[13px] object-cover" />
+                  ) : (
+                    <div
+                      className="size-[46px] shrink-0 rounded-[13px]"
+                      style={{ backgroundImage: "repeating-linear-gradient(135deg, #F0ECE6 0 6px, #E4DFD7 6px 12px)" }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15.5px] font-semibold text-ppj-ink">{ligne.prenom}</p>
+                    <p className="mt-0.5 text-[12.5px] text-ppj-text-3">{metier?.filiere}</p>
                   </div>
-                )}
-              </Link>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-foreground">{ligne.prenom}</p>
-                <p className="text-sm text-muted-foreground">
-                  {metier?.label} · {ligne.heureDebut} – {ligne.heureFin}
-                </p>
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarDays className="size-3" />
-                  {ligne.date}
-                </p>
-                <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                  <MapPin className="size-3 shrink-0" />
-                  <span className="truncate">{ligne.adresse}</span>
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="font-medium text-foreground">{montantLigne(ligne)} €</span>
-                <button
-                  type="button"
-                  aria-label="Retirer du panier"
-                  onClick={() => retirerLigne(index)}
-                  className="text-muted-foreground transition-colors hover:text-destructive"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-                <Checkbox
-                  checked={ligne.selectionnee}
-                  onCheckedChange={() => basculerSelectionLigne(index)}
-                  aria-label={`Inclure ${ligne.prenom} dans l'envoi`}
-                />
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                  <button
+                    type="button"
+                    onClick={() => retirerLigne(index)}
+                    className="shrink-0 text-[13px] text-ppj-text-4 underline decoration-solid underline-offset-[3px] transition-colors hover:text-primary"
+                  >
+                    Retirer
+                  </button>
+                </div>
 
-      <div className="mt-6 flex items-center justify-between border-t border-border pt-6">
-        <span className="text-lg font-semibold text-foreground">
-          Total ({lignesSelectionnees.length} sélectionné{lignesSelectionnees.length > 1 ? "s" : ""})
-        </span>
-        <span className="font-heading text-2xl font-semibold text-foreground">{total} €</span>
+                <div className="mt-3.5 flex items-center gap-3 border-t border-ppj-line-2 pt-3.5">
+                  <span className="text-[13px] text-ppj-text-2">
+                    {ligne.tarifType === "horaire" ? `${ligne.tarifMontant} € / heure` : `${ligne.tarifMontant} € / jour`}
+                  </span>
+                  <Link
+                    href={`/prestataires/${ligne.prestataireId}`}
+                    className="ml-auto shrink-0 rounded-[10px] border border-ppj-line-button px-3.5 py-[9px] text-[13px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
+                  >
+                    Revoir le profil
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+          <Link
+            href="/prestataires?mode=recherche"
+            className="rounded-2xl border border-dashed border-ppj-line-button px-[18px] py-[18px] text-center text-[14.5px] font-semibold text-ppj-text-3 transition-colors hover:border-ppj-ink hover:text-ppj-ink"
+          >
+            + Ajouter un professionnel
+          </Link>
+        </div>
+
+        <div className="sticky top-6 rounded-[18px] border border-ppj-line bg-white p-[22px]">
+          <h2 className="text-[17px] font-semibold text-ppj-ink">Votre sélection</h2>
+          <div className="mt-4 grid gap-[11px] text-[14.5px]">
+            {METIERS.filter((m) => parMetier.has(m.id)).map((m) => (
+              <span key={m.id} className="flex items-center justify-between gap-3.5">
+                <span className="min-w-0 text-ppj-text-2">{m.filiere}</span>
+                <span className="shrink-0 text-ppj-ink">{parMetier.get(m.id)}</span>
+              </span>
+            ))}
+            <span className="my-1 block h-px bg-ppj-line-2" />
+            <span className="flex items-center justify-between gap-3.5 font-semibold text-ppj-ink">
+              <span>Professionnels retenus</span>
+              <span>{panier.lignes.length}</span>
+            </span>
+          </div>
+          <Button
+            render={<Link href="/panier/proposer" />}
+            className="mt-[18px] min-h-[52px] w-full rounded-[13px] bg-primary text-[15.5px] font-semibold text-white hover:bg-[#B8130F]"
+          >
+            Proposer la mission
+          </Button>
+          <p className="mt-3.5 text-[12.5px] leading-[1.6] text-ppj-text-4">
+            Aucun paiement à ce stade. Le montant n&apos;est bloqué qu&apos;une fois la mission acceptée par le professionnel.
+          </p>
+        </div>
       </div>
-
-      {!clientSecret ? (
-        <div className="mt-6">
-          {demandeAuth ? (
-            <div className="rounded-2xl border border-border bg-secondary/30 p-5 text-center">
-              <p className="mb-4 text-sm text-foreground">
-                Encore une étape : connectez-vous ou créez un compte pour envoyer cette
-                offre. Votre panier reste enregistré.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                <Button render={<Link href="/connexion?next=/panier" />} className="rounded-full">
-                  Se connecter
-                </Button>
-                <Button
-                  render={<Link href="/inscription/recruteur" />}
-                  variant="outline"
-                  className="rounded-full"
-                >
-                  Créer un compte
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {erreur && <p className="mb-3 text-sm font-medium text-destructive">{erreur}</p>}
-              <Button
-                className="w-full rounded-full"
-                onClick={handleProcederPaiement}
-                disabled={chargement || lignesSelectionnees.length === 0}
-              >
-                {chargement ? "Préparation du paiement..." : "Envoyer l'offre"}
-              </Button>
-            </>
-          )}
-        </div>
-      ) : stripePromise ? (
-        <div className="mt-6 rounded-2xl border border-border bg-background p-6">
-          <Elements stripe={stripePromise} options={{ clientSecret }}>
-            <CheckoutForm
-              lignes={lignesSelectionnees.map(({ ligne }) => ligne)}
-              indices={lignesSelectionnees.map(({ index }) => index)}
-              montant={montant ?? total}
-            />
-          </Elements>
-        </div>
-      ) : (
-        <p className="mt-6 text-sm font-medium text-destructive">
-          Le paiement n&apos;est pas encore configuré sur cette instance.
-        </p>
-      )}
     </div>
   );
 }

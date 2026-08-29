@@ -24,7 +24,7 @@ export default async function AdminParametresPage() {
 
   return (
     <div className="max-w-xl space-y-4">
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Paramètres</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Paramètres</h1>
 
       <Section titre="Double authentification">
         <TwoFactorSetup dejaActivee={dejaActivee} />

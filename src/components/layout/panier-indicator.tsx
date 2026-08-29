@@ -10,12 +10,16 @@ import {
 } from "@/components/ui/popover";
 import { METIERS } from "@/config/metiers";
 import { usePanier } from "@/hooks/use-panier";
-import { montantLigne, retirerLigne, totalPanier } from "@/lib/panier";
+import { retirerLigne } from "@/lib/panier";
 
+/**
+ * "proparjour 6-7" §8 (RÉVISÉ) — simple liste de personnes retenues :
+ * ni tarif, ni horaires, ni total ici (ces informations n'existent
+ * plus au niveau de la ligne de panier, voir lib/panier.ts).
+ */
 export function PanierIndicator() {
   const panier = usePanier();
   const count = panier.lignes.length;
-  const total = totalPanier(panier);
 
   return (
     <Popover>
@@ -44,7 +48,7 @@ export function PanierIndicator() {
         ) : (
           <>
             <p className="mb-3 text-sm font-medium text-foreground">
-              {count} prestataire{count > 1 ? "s" : ""} sur cette mission
+              {count} professionnel{count > 1 ? "s" : ""} retenu{count > 1 ? "s" : ""}
             </p>
             <ul className="max-h-72 space-y-2 overflow-y-auto">
               {panier.lignes.map((ligne, index) => {
@@ -79,12 +83,9 @@ export function PanierIndicator() {
                         {ligne.prenom}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {metier?.label} · {ligne.heureDebut}–{ligne.heureFin}
+                        {metier?.label}
                       </p>
                     </Link>
-                    <span className="shrink-0 text-xs font-medium text-foreground">
-                      {montantLigne(ligne)} €
-                    </span>
                     <button
                       type="button"
                       aria-label="Retirer du panier"
@@ -97,14 +98,8 @@ export function PanierIndicator() {
                 );
               })}
             </ul>
-            <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-              <span className="text-sm font-medium text-foreground">Total</span>
-              <span className="font-heading text-lg font-semibold text-foreground">
-                {total} €
-              </span>
-            </div>
             <Button render={<Link href="/panier" />} className="mt-3 w-full rounded-full">
-              Valider le panier
+              Voir le panier
             </Button>
           </>
         )}

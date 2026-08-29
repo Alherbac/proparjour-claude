@@ -10,10 +10,17 @@ import type { MetierType, StatutVerificationType } from "@/lib/supabase/database
  * prestataire (upload/re-upload) — ni l'un ni l'autre n'est
  * server-only, contrairement à src/lib/admin/kyc.ts.
  */
+const DOCUMENTS_COMMUNS = [
+  { type: "carte_professionnelle", label: "Carte professionnelle" },
+  { type: "attestation_urssaf", label: "Attestation URSSAF" },
+  { type: "piece_identite", label: "Pièce d'identité" },
+  { type: "extrait_kbis", label: "Extrait Kbis (ou avis de situation SIRENE)" },
+];
+
 export const DOCUMENTS_REQUIS: Record<MetierType, { type: string; label: string }[]> = {
-  securite: [{ type: "carte_cnaps", label: "Carte professionnelle CNAPS" }],
-  accueil: [],
-  vente: [],
+  securite: [{ type: "carte_cnaps", label: "Carte professionnelle CNAPS" }, ...DOCUMENTS_COMMUNS],
+  accueil: DOCUMENTS_COMMUNS,
+  vente: DOCUMENTS_COMMUNS,
 };
 
 export type StatutAffiche = "en_attente" | "partiel" | "valide" | "refuse";

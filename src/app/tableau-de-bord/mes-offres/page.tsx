@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getOffresRecruteur } from "@/lib/offres";
+import { getMesOffresRecruteur } from "@/lib/offres";
 import { MesOffresScreen } from "@/components/dashboard/mes-offres-screen";
 
 export const metadata: Metadata = {
@@ -19,6 +19,6 @@ export default async function MesOffresPage() {
   const estRecruteur = profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier";
   if (!estRecruteur) redirect("/tableau-de-bord");
 
-  const offres = await getOffresRecruteur(user.id);
-  return <MesOffresScreen offres={offres} />;
+  const { demandes, offresSeules } = await getMesOffresRecruteur(user.id);
+  return <MesOffresScreen demandes={demandes} offresSeules={offresSeules} />;
 }

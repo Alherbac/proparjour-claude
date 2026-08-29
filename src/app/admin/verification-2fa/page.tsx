@@ -20,7 +20,7 @@ export default async function Verification2FAPage() {
 
   return (
     <div className="mx-auto max-w-sm">
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Vérification en deux étapes</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Vérification en deux étapes</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Saisis le code à 6 chiffres de ton application d&apos;authentification.
       </p>

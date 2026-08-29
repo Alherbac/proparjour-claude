@@ -9,9 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { METIERS } from "@/config/metiers";
 import { repondreCandidature } from "@/app/actions/offres";
-import { ajouterLigne } from "@/lib/panier";
 import { montantMission } from "@/lib/duree";
-import type { OffreAvecCandidatures } from "@/lib/offres";
+import { GererOffre } from "@/components/dashboard/gerer-offre";
+import type { OffreAvecCandidatures, DemandeAvecOffres } from "@/lib/offres";
 
 const STATUT_LABEL: Record<string, string> = {
   publiee: "Publiée",
@@ -22,10 +22,8 @@ const STATUT_LABEL: Record<string, string> = {
 
 function CandidatureRow({
   candidature,
-  offre,
 }: {
   candidature: OffreAvecCandidatures["candidatures"][number];
-  offre: OffreAvecCandidatures;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -45,24 +43,13 @@ function CandidatureRow({
         return;
       }
 
-      // Accepter une candidature amène directement au panier pour
-      // finaliser le paiement avec ce prestataire, aux conditions de
-      // l'offre — c'est la suite logique après acceptation.
-      ajouterLigne({
-        prestataireId: candidature.prestataire_id,
-        prenom: candidature.prenom ?? "Prestataire",
-        metier: offre.metier,
-        tarifMontant: offre.tarif_horaire,
-        tarifType: "horaire",
-        heureDebut: offre.heure_debut,
-        heureFin: offre.heure_fin,
-        photoUrl: candidature.photo_url,
-        date: offre.date_mission,
-        adresse: offre.ville,
-        description: offre.description,
-      });
-      toast.success("Candidature acceptée — ajouté(e) à votre panier pour finaliser le paiement.");
-      router.push("/panier");
+      // Accepter une candidature ouvre immédiatement la conversation
+      // avec le prestataire, où un devis pré-rempli attend d'être payé
+      // — plus besoin de repasser par le panier.
+      toast.success("Candidature acceptée — conversation ouverte avec le prestataire.");
+      if (result.data.missionId) {
+        router.push(`/missions/${result.data.missionId}`);
+      }
     });
   }
 
@@ -70,7 +57,7 @@ function CandidatureRow({
 
   return (
     <li className="flex items-center gap-3 rounded-xl border border-border bg-background p-3">
-      <Link href={`/prestataires/${candidature.prestataire_id}`} className="shrink-0">
+      <Link href={`/tableau-de-bord/candidats/${candidature.id}`} className="shrink-0">
         {candidature.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- pas d'autre usage de next/image dans ce projet
           <img
@@ -122,12 +109,87 @@ function CandidatureRow({
   );
 }
 
-export function MesOffresScreen({ offres }: { offres: OffreAvecCandidatures[] }) {
-  if (offres.length === 0) {
+function OffreCard({ offre }: { offre: OffreAvecCandidatures }) {
+  const metier = METIERS.find((m) => m.id === offre.metier);
+  const total = montantMission(offre.heure_debut, offre.heure_fin, offre.tarif_horaire);
+  const aCandidatureAcceptee = offre.candidatures.some((c) => c.statut === "acceptee");
+  return (
+    <div className="rounded-2xl border border-border bg-background p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-foreground">{offre.titre}</p>
+          <p className="text-sm text-muted-foreground">
+            {metier?.filiere} · {offre.ville} · {offre.date_mission} · {offre.heure_debut}–
+            {offre.heure_fin}
+          </p>
+          <p className="text-sm font-medium text-primary">
+            {total} € au total ({offre.tarif_horaire} € / heure)
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge variant="secondary" className="font-normal">
+            {STATUT_LABEL[offre.statut]}
+          </Badge>
+          <GererOffre offre={offre} aCandidatureAcceptee={aCandidatureAcceptee} />
+        </div>
+      </div>
+
+      <p className="mt-2 text-sm text-muted-foreground">{offre.description}</p>
+
+      <div className="mt-4">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {offre.candidatures.length} candidature{offre.candidatures.length > 1 ? "s" : ""}
+        </p>
+        {offre.candidatures.length > 0 ? (
+          <ul className="space-y-2">
+            {offre.candidatures.map((c) => (
+              <CandidatureRow key={c.id} candidature={c} />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">Aucune candidature pour l&apos;instant.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DemandeCard({ demande }: { demande: DemandeAvecOffres }) {
+  const total = demande.offres.length;
+  const pourvues = demande.offres.filter((o) => o.statut === "pourvue").length;
+  return (
+    <div className="rounded-2xl border-2 border-primary/20 bg-secondary/20 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-heading text-lg font-semibold text-foreground">{demande.titre}</p>
+          <p className="text-sm text-muted-foreground">
+            Demande globale · {total} besoin{total > 1 ? "s" : ""} · {pourvues}/{total} pourvu
+            {pourvues > 1 ? "s" : ""}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {demande.offres.map((offre) => (
+          <OffreCard key={offre.id} offre={offre} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function MesOffresScreen({
+  demandes,
+  offresSeules,
+}: {
+  demandes: DemandeAvecOffres[];
+  offresSeules: OffreAvecCandidatures[];
+}) {
+  if (demandes.length === 0 && offresSeules.length === 0) {
     return (
       <div className="mx-auto flex max-w-xl flex-col items-center gap-3 px-4 py-20 text-center">
         <Briefcase className="size-10 text-muted-foreground" />
-        <h1 className="font-heading text-2xl font-semibold text-foreground">
+        <h1 className="font-display-serif text-2xl text-foreground">
           Aucune offre publiée
         </h1>
         <p className="text-muted-foreground">
@@ -150,46 +212,12 @@ export function MesOffresScreen({ offres }: { offres: OffreAvecCandidatures[] })
       </div>
 
       <div className="mt-6 space-y-4">
-        {offres.map((offre) => {
-          const metier = METIERS.find((m) => m.id === offre.metier);
-          const total = montantMission(offre.heure_debut, offre.heure_fin, offre.tarif_horaire);
-          return (
-            <div key={offre.id} className="rounded-2xl border border-border bg-background p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-foreground">{offre.titre}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {metier?.filiere} · {offre.ville} · {offre.date_mission} · {offre.heure_debut}–
-                    {offre.heure_fin}
-                  </p>
-                  <p className="text-sm font-medium text-primary">
-                    {total} € au total ({offre.tarif_horaire} € / heure)
-                  </p>
-                </div>
-                <Badge variant="secondary" className="shrink-0 font-normal">
-                  {STATUT_LABEL[offre.statut]}
-                </Badge>
-              </div>
-
-              <p className="mt-2 text-sm text-muted-foreground">{offre.description}</p>
-
-              <div className="mt-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {offre.candidatures.length} candidature{offre.candidatures.length > 1 ? "s" : ""}
-                </p>
-                {offre.candidatures.length > 0 ? (
-                  <ul className="space-y-2">
-                    {offre.candidatures.map((c) => (
-                      <CandidatureRow key={c.id} candidature={c} offre={offre} />
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Aucune candidature pour l&apos;instant.</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {demandes.map((demande) => (
+          <DemandeCard key={demande.id} demande={demande} />
+        ))}
+        {offresSeules.map((offre) => (
+          <OffreCard key={offre.id} offre={offre} />
+        ))}
       </div>
     </div>
   );

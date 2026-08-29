@@ -19,6 +19,8 @@ export type TarifType = "horaire" | "journalier";
 
 export type StatutVerificationType = "en_attente" | "valide" | "refuse";
 
+export type SuppressionStatutType = "en_attente" | "traitee" | "refusee";
+
 export type MissionStatutType =
   | "en_attente"
   | "confirmee"
@@ -29,7 +31,7 @@ export type MissionStatutType =
 
 export type LigneStatutType = "en_attente" | "acceptee" | "refusee";
 
-export type MessageType = "texte" | "systeme";
+export type MessageType = "texte" | "systeme" | "devis";
 
 export type PaiementStatutType =
   | "en_attente"
@@ -88,6 +90,8 @@ export type PrestatairesProfilsRow = {
   statut_verification: StatutVerificationType;
   motif_refus: string | null;
   visible: boolean;
+  iban: string | null;
+  bic: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -159,6 +163,8 @@ export type PrestatairesPublicsRow = {
 export type MissionsRow = {
   id: string;
   recruteur_id: string;
+  offre_id: string | null;
+  candidature_id: string | null;
   lieu: string;
   date_mission: string;
   description: string | null;
@@ -166,6 +172,7 @@ export type MissionsRow = {
   service_fait: boolean;
   motif_litige: string | null;
   montant_total: number;
+  serie_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -180,6 +187,7 @@ export type MissionLignesRow = {
   tarif_applique: number;
   statut_acceptation: LigneStatutType;
   service_fait: boolean;
+  refus_automatique: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -196,8 +204,46 @@ export type OffresRow = {
   heure_fin: string;
   tarif_horaire: number;
   statut: OffreStatutType;
+  demande_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type DemandesRow = {
+  id: string;
+  client_id: string;
+  titre: string;
+  texte_original: string | null;
+  created_at: string;
+};
+
+export type SeriesFrequenceType = "hebdomadaire" | "toutes_les_2_semaines" | "jours_specifiques" | "mensuelle";
+export type SeriesStatutType = "active" | "annulee";
+
+export type SeriesMissionsRow = {
+  id: string;
+  recruteur_id: string;
+  titre: string;
+  lieu: string;
+  description: string | null;
+  frequence: SeriesFrequenceType;
+  jours_semaine: string[];
+  date_debut: string;
+  date_fin: string;
+  statut: SeriesStatutType;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SeriesSousBesoinsRow = {
+  id: string;
+  serie_id: string;
+  metier: MetierType;
+  prestataire_id: string;
+  heure_debut: string;
+  heure_fin: string;
+  tarif_horaire: number;
+  created_at: string;
 };
 
 export type CandidaturesRow = {
@@ -229,6 +275,7 @@ export type MessagesRow = {
   destinataire_id: string;
   contenu: string;
   type: MessageType;
+  metadata: Record<string, unknown> | null;
   lu: boolean;
   created_at: string;
 };
@@ -265,6 +312,64 @@ export type JustificatifsRow = {
   reviewed_by: string | null;
 };
 
+export type CommandesEnAttenteRow = {
+  payment_intent_id: string;
+  recruteur_id: string;
+  lignes: unknown;
+  serie_id: string | null;
+  created_at: string;
+};
+
+export type WebhookEventsTraitesRow = {
+  event_id: string;
+  type: string;
+  created_at: string;
+};
+
+export type VersementsPrestatairesRow = {
+  mission_ligne_id: string;
+  reference: string | null;
+  verse_par: string;
+  verse_le: string;
+};
+
+export type AvisRow = {
+  id: string;
+  mission_ligne_id: string;
+  auteur_id: string;
+  cible_id: string;
+  note: number;
+  commentaire: string | null;
+  created_at: string;
+};
+
+export type AvisPublicsRow = {
+  id: string;
+  prestataire_id: string;
+  note: number;
+  commentaire: string | null;
+  created_at: string;
+  auteur_prenom: string | null;
+};
+
+export type ParametresCommissionRow = {
+  id: boolean;
+  taux: number;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type DemandesSuppressionCompteRow = {
+  id: string;
+  user_id: string;
+  motif: string | null;
+  statut: SuppressionStatutType;
+  traitee_par: string | null;
+  traitee_le: string | null;
+  motif_refus: string | null;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -294,6 +399,8 @@ export type Database = {
           | "photo_url"
           | "visible"
           | "competences"
+          | "iban"
+          | "bic"
         > &
           Partial<
             Pick<
@@ -305,6 +412,8 @@ export type Database = {
               | "photo_url"
               | "visible"
               | "competences"
+              | "iban"
+              | "bic"
             >
           >;
         Update: Partial<PrestatairesProfilsRow>;
@@ -371,23 +480,69 @@ export type Database = {
       };
       missions: {
         Row: MissionsRow;
-        Insert: Omit<MissionsRow, "id" | "created_at" | "updated_at" | "statut" | "service_fait"> &
-          Partial<Pick<MissionsRow, "id" | "statut" | "service_fait">>;
+        Insert: Omit<
+          MissionsRow,
+          "id" | "created_at" | "updated_at" | "statut" | "service_fait" | "serie_id" | "offre_id" | "candidature_id"
+        > &
+          Partial<Pick<MissionsRow, "id" | "statut" | "service_fait" | "serie_id" | "offre_id" | "candidature_id">>;
         Update: Partial<MissionsRow>;
+        Relationships: [
+          {
+            foreignKeyName: "missions_serie_id_fkey";
+            columns: ["serie_id"];
+            isOneToOne: false;
+            referencedRelation: "series_missions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      series_missions: {
+        Row: SeriesMissionsRow;
+        Insert: Omit<SeriesMissionsRow, "id" | "created_at" | "updated_at" | "statut"> &
+          Partial<Pick<SeriesMissionsRow, "id" | "statut">>;
+        Update: Partial<SeriesMissionsRow>;
         Relationships: [];
+      };
+      series_sous_besoins: {
+        Row: SeriesSousBesoinsRow;
+        Insert: Omit<SeriesSousBesoinsRow, "id" | "created_at"> & Partial<Pick<SeriesSousBesoinsRow, "id">>;
+        Update: Partial<SeriesSousBesoinsRow>;
+        Relationships: [
+          {
+            foreignKeyName: "series_sous_besoins_serie_id_fkey";
+            columns: ["serie_id"];
+            isOneToOne: false;
+            referencedRelation: "series_missions";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       mission_lignes: {
         Row: MissionLignesRow;
-        Insert: Omit<MissionLignesRow, "id" | "created_at" | "updated_at" | "statut_acceptation"> &
-          Partial<Pick<MissionLignesRow, "id" | "statut_acceptation">>;
+        Insert: Omit<MissionLignesRow, "id" | "created_at" | "updated_at" | "statut_acceptation" | "refus_automatique"> &
+          Partial<Pick<MissionLignesRow, "id" | "statut_acceptation" | "refus_automatique">>;
         Update: Partial<MissionLignesRow>;
         Relationships: [];
       };
       offres: {
         Row: OffresRow;
-        Insert: Omit<OffresRow, "id" | "created_at" | "updated_at" | "statut"> &
-          Partial<Pick<OffresRow, "id" | "statut">>;
+        Insert: Omit<OffresRow, "id" | "created_at" | "updated_at" | "statut" | "demande_id"> &
+          Partial<Pick<OffresRow, "id" | "statut" | "demande_id">>;
         Update: Partial<OffresRow>;
+        Relationships: [
+          {
+            foreignKeyName: "offres_demande_id_fkey";
+            columns: ["demande_id"];
+            isOneToOne: false;
+            referencedRelation: "demandes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      demandes: {
+        Row: DemandesRow;
+        Insert: Omit<DemandesRow, "id" | "created_at"> & Partial<Pick<DemandesRow, "id" | "created_at">>;
+        Update: Partial<DemandesRow>;
         Relationships: [];
       };
       candidatures: {
@@ -421,8 +576,8 @@ export type Database = {
       };
       messages: {
         Row: MessagesRow;
-        Insert: Omit<MessagesRow, "id" | "created_at" | "lu" | "type"> &
-          Partial<Pick<MessagesRow, "id" | "lu" | "type">>;
+        Insert: Omit<MessagesRow, "id" | "created_at" | "lu" | "type" | "metadata"> &
+          Partial<Pick<MessagesRow, "id" | "lu" | "type" | "metadata">>;
         Update: Partial<MessagesRow>;
         Relationships: [];
       };
@@ -447,10 +602,51 @@ export type Database = {
         Update: Partial<JustificatifsRow>;
         Relationships: [];
       };
+      commandes_en_attente: {
+        Row: CommandesEnAttenteRow;
+        Insert: Omit<CommandesEnAttenteRow, "created_at" | "serie_id"> & Partial<Pick<CommandesEnAttenteRow, "serie_id">>;
+        Update: Partial<CommandesEnAttenteRow>;
+        Relationships: [];
+      };
+      webhook_events_traites: {
+        Row: WebhookEventsTraitesRow;
+        Insert: Omit<WebhookEventsTraitesRow, "created_at">;
+        Update: Partial<WebhookEventsTraitesRow>;
+        Relationships: [];
+      };
+      versements_prestataires: {
+        Row: VersementsPrestatairesRow;
+        Insert: Omit<VersementsPrestatairesRow, "verse_le"> & Partial<Pick<VersementsPrestatairesRow, "verse_le">>;
+        Update: Partial<VersementsPrestatairesRow>;
+        Relationships: [];
+      };
+      avis: {
+        Row: AvisRow;
+        Insert: Omit<AvisRow, "id" | "created_at"> & Partial<Pick<AvisRow, "id" | "created_at">>;
+        Update: Partial<AvisRow>;
+        Relationships: [];
+      };
+      demandes_suppression_compte: {
+        Row: DemandesSuppressionCompteRow;
+        Insert: Omit<DemandesSuppressionCompteRow, "id" | "created_at" | "statut" | "traitee_par" | "traitee_le" | "motif_refus"> &
+          Partial<Pick<DemandesSuppressionCompteRow, "id" | "created_at" | "statut" | "traitee_par" | "traitee_le" | "motif_refus">>;
+        Update: Partial<DemandesSuppressionCompteRow>;
+        Relationships: [];
+      };
+      parametres_commission: {
+        Row: ParametresCommissionRow;
+        Insert: Partial<ParametresCommissionRow>;
+        Update: Partial<ParametresCommissionRow>;
+        Relationships: [];
+      };
     };
     Views: {
       prestataires_publics: {
         Row: PrestatairesPublicsRow;
+        Relationships: [];
+      };
+      avis_publics: {
+        Row: AvisPublicsRow;
         Relationships: [];
       };
     };
@@ -479,13 +675,75 @@ export type Database = {
         Args: { check_role: AdminRole };
         Returns: boolean;
       };
+      creer_mission_depuis_candidature: {
+        Args: {
+          p_recruteur_id: string;
+          p_offre_id: string;
+          p_candidature_id: string;
+          p_prestataire_id: string;
+          p_metier: MetierType;
+          p_lieu: string;
+          p_date_mission: string;
+          p_heure_debut: string;
+          p_heure_fin: string;
+          p_tarif_applique: number;
+          p_montant_total: number;
+          p_taux_commission: number;
+          p_montant_commission: number;
+          p_description?: string | null;
+        };
+        Returns: string;
+      };
+      confirmer_paiement_mission: {
+        Args: { p_mission_id: string; p_stripe_payment_intent_id: string; p_montant?: number | null };
+        Returns: undefined;
+      };
+      creer_mission_proposee: {
+        Args: {
+          p_recruteur_id: string;
+          p_lieu: string;
+          p_date_mission: string;
+          p_lignes: {
+            prestataire_id: string;
+            metier: MetierType;
+            heure_debut: string;
+            heure_fin: string;
+            tarif_applique: number;
+          }[];
+          p_montant_total: number;
+          p_taux_commission: number;
+          p_montant_commission: number;
+          p_description?: string | null;
+        };
+        Returns: string;
+      };
       compter_missions_total: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      compter_prestataires_valides: {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
       prestataires_en_mission_ids: {
         Args: Record<PropertyKey, never>;
         Returns: { prestataire_id: string }[];
+      };
+      prestataires_indisponibles_le: {
+        Args: { p_date: string };
+        Returns: { prestataire_id: string }[];
+      };
+      prestataires_fiabilite: {
+        Args: Record<PropertyKey, never>;
+        Returns: { prestataire_id: string; missions_terminees: number; nb_litiges: number }[];
+      };
+      verifier_limite_debit: {
+        Args: { p_cle: string; p_max: number; p_fenetre_secondes: number };
+        Returns: boolean;
+      };
+      avis_moyenne_prestataires: {
+        Args: Record<PropertyKey, never>;
+        Returns: { prestataire_id: string; note_moyenne: number; nb_avis: number }[];
       };
     };
   };

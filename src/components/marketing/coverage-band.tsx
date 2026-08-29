@@ -23,7 +23,7 @@ export function CoverageBand() {
                   {d}
                 </span>
               ))}
-              <span className="rounded-[20px] border border-gold/40 px-3.5 py-2 font-mono-landing text-xs text-gold">
+              <span className="rounded-[20px] border border-primary/40 px-3.5 py-2 font-mono-landing text-xs text-primary">
                 + toute la France, bientôt
               </span>
             </div>

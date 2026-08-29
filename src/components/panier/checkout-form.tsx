@@ -5,16 +5,25 @@ import { useRouter } from "next/navigation";
 import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { finaliserCommande } from "@/app/actions/commande";
-import { retirerLignesParIndex, type LignePanier } from "@/lib/panier";
+import { finaliserCommande, type LigneReservation } from "@/app/actions/commande";
+import { lireSerieEnAttente, oublierSerieEnAttente } from "@/lib/serie-en-attente";
+import { rattacherMissionsASerie } from "@/app/actions/series";
 
+/**
+ * Formulaire Stripe Elements final, réutilisé par les deux parcours à
+ * paiement immédiat ("Refaire une mission", "Créer une série
+ * récurrente" — voir paiement-direct.tsx). Le panier, lui, ne paie
+ * plus rien directement depuis le lancement de l'écran "Proposer la
+ * mission" (le paiement y intervient seulement après acceptation du
+ * professionnel, via la carte de devis existante en messagerie) — ce
+ * composant n'a donc plus jamais besoin de retirer des lignes du
+ * panier localStorage après paiement.
+ */
 export function CheckoutForm({
   lignes,
-  indices,
   montant,
 }: {
-  lignes: LignePanier[];
-  indices: number[];
+  lignes: LigneReservation[];
   montant: number;
 }) {
   const stripe = useStripe();
@@ -48,10 +57,13 @@ export function CheckoutForm({
       return;
     }
 
-    // Ne retire du panier que les lignes effectivement envoyées — les
-    // prestataires laissés décochés restent disponibles pour un envoi
-    // ultérieur.
-    retirerLignesParIndex(indices);
+    const serieEnAttente = lireSerieEnAttente();
+    if (serieEnAttente) {
+      await rattacherMissionsASerie(serieEnAttente, result.data.missionIds);
+      oublierSerieEnAttente();
+      router.push(`/tableau-de-bord/series/${serieEnAttente}`);
+      return;
+    }
 
     const [premierMissionId] = result.data.missionIds;
     router.push(

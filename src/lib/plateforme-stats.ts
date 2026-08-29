@@ -4,22 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 /**
  * Chiffres réels affichés sur la landing page et la page À propos —
  * calculés depuis la base à chaque rendu, jamais des valeurs figées
- * dans le code. Aucun système d'avis/notation n'existe encore dans
- * l'app : ne jamais afficher de note moyenne tant que ce n'est pas
- * une vraie fonctionnalité.
+ * dans le code.
  */
 export async function getStatsPlateforme() {
   const supabase = await createClient();
 
-  const [{ count: prestatairesValides }, { data: missionsTotal }] = await Promise.all([
-    supabase
-      .from("prestataires_profils")
-      .select("*", { count: "exact", head: true })
-      .eq("statut_verification", "valide")
-      .eq("visible", true),
-    // `missions` n'a pas de policy de lecture publique (données
-    // semi-privées) — cette fonction expose uniquement le total via
-    // SECURITY DEFINER, voir migration 0018.
+  // Ni `prestataires_profils` ni `missions` n'ont de policy de lecture
+  // publique côté ligne (données semi-privées, iban/bic/CNAPS pour la
+  // première) — ces deux fonctions n'exposent que le total via
+  // SECURITY DEFINER, voir migrations 0018 et 0032.
+  const [{ data: prestatairesValides }, { data: missionsTotal }] = await Promise.all([
+    supabase.rpc("compter_prestataires_valides"),
     supabase.rpc("compter_missions_total"),
   ]);
 

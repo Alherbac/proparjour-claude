@@ -55,7 +55,7 @@ export default async function AdminAnnuairePage({
 
   return (
     <div>
-      <h1 className="font-heading text-2xl font-semibold text-foreground">Annuaire prestataires</h1>
+      <h1 className="font-display-serif text-2xl text-foreground">Annuaire prestataires</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {total} prestataire{total !== 1 ? "s" : ""} vérifié{total !== 1 ? "s" : ""} — vue de consultation,
         identique à la recherche recruteur.

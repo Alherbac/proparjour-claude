@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { requireAdminSession } from "@/lib/admin/auth";
-import { ModuleAVenir } from "@/components/admin/module-a-venir";
+import { getTauxCommission } from "@/lib/commission";
+import { SimulationScreen } from "@/components/admin/simulation-screen";
 
 export const metadata: Metadata = { title: "Simulation — Admin ProParJour" };
 
 export default async function AdminSimulationPage() {
   await requireAdminSession();
-  return <ModuleAVenir titre="Simulation" lot="Lot 6 — Support" />;
+  const tauxActuel = await getTauxCommission();
+  return <SimulationScreen tauxActuel={tauxActuel} />;
 }

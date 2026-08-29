@@ -97,7 +97,7 @@ export default async function AProposPage() {
           <div className="mt-14 grid grid-cols-3 gap-4 rounded-2xl bg-ink px-6 py-8 text-center text-white max-[900px]:grid-cols-1">
             {metriques.map((m) => (
               <div key={m.l}>
-                <div className="font-display text-[28px] font-bold text-gold">{m.n}</div>
+                <div className="font-display text-[28px] font-bold text-primary">{m.n}</div>
                 <div className="mt-1 text-[13px] text-white/55">{m.l}</div>
               </div>
             ))}

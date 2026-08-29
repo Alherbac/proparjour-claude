@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { traduireErreurDb } from "@/lib/erreurs-db";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -56,7 +57,7 @@ export async function enregistrerJustificatif(
         reviewed_by: null,
       })
       .eq("id", existant.id);
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer ce document pour le moment.") };
     return { success: true };
   }
 
@@ -65,6 +66,6 @@ export async function enregistrerJustificatif(
     type_document: typeDocument,
     storage_path: storagePath,
   });
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer ce document pour le moment.") };
   return { success: true };
 }

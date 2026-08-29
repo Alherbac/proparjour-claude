@@ -4,7 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
 import { creerNotification } from "@/lib/notifications";
-import { creerMessageSysteme } from "@/lib/messages";
+import { creerMessageSysteme, creerMessageDevis } from "@/lib/messages";
+import { montantAPayer } from "@/app/actions/paiement-mission";
+import { heuresEntre } from "@/lib/duree";
 import {
   getLigneMissionPrestataire,
   getMissionPourFacture,
@@ -13,6 +15,8 @@ import {
 } from "@/lib/missions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { traduireErreurDb } from "@/lib/erreurs-db";
+import { envoyerEmailMissionConfirmee, envoyerEmailPaiementDebloque } from "@/lib/email";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -51,7 +55,7 @@ export async function repondreMissionLigne(
 
   const { data: ligne, error: ligneError } = await admin
     .from("mission_lignes")
-    .select("id, mission_id, prestataire_id")
+    .select("id, mission_id, prestataire_id, metier, heure_debut, heure_fin, tarif_applique")
     .eq("id", ligneId)
     .maybeSingle();
 
@@ -76,12 +80,12 @@ export async function repondreMissionLigne(
     .eq("id", ligneId);
 
   if (updateError) {
-    return { success: false, error: updateError.message };
+    return { success: false, error: traduireErreurDb(updateError, "Impossible d'enregistrer votre réponse pour le moment.") };
   }
 
   const { data: mission } = await admin
     .from("missions")
-    .select("recruteur_id")
+    .select("recruteur_id, lieu, date_mission, description")
     .eq("id", ligne.mission_id)
     .maybeSingle();
 
@@ -97,6 +101,57 @@ export async function repondreMissionLigne(
 
     if (toutesAcceptees) {
       await admin.from("missions").update({ statut: "confirmee" }).eq("id", ligne.mission_id);
+      if (mission) {
+        await envoyerEmailMissionConfirmee(mission.recruteur_id, mission.lieu, mission.date_mission, ligne.mission_id);
+      }
+    }
+
+    // "proparjour 6-7" §8 — mission née du panier → "Proposer la
+    // mission" (actions/proposition.ts) : personne n'avait encore
+    // consenti à rien, donc aucun devis n'a été envoyé à la création
+    // (contrairement à repondreCandidature, où le consentement du
+    // prestataire est acquis dès la candidature). Cette première
+    // acceptation est donc le tout premier moment où un paiement
+    // devient possible — on envoie alors la carte de devis existante
+    // (même mécanisme que le parcours candidature, jamais une
+    // deuxième UI de paiement) si aucune n'existe déjà pour cette
+    // mission. Ne se déclenche jamais sur les missions déjà payées à
+    // la création (Refaire une mission / Créer une série) ni sur
+    // celles où un devis a déjà été envoyé (parcours candidature) :
+    // gardé par paiement 'en_attente' + absence de message 'devis'.
+    if (mission) {
+      const { data: paiement } = await admin
+        .from("paiements")
+        .select("statut")
+        .eq("mission_id", ligne.mission_id)
+        .maybeSingle();
+      if (paiement?.statut === "en_attente") {
+        const { data: devisExistant } = await admin
+          .from("messages")
+          .select("id")
+          .eq("mission_id", ligne.mission_id)
+          .eq("type", "devis")
+          .limit(1)
+          .maybeSingle();
+        if (!devisExistant) {
+          const duree = heuresEntre(ligne.heure_debut, ligne.heure_fin);
+          const montantTotal = await montantAPayer(admin, ligne.mission_id);
+          await creerMessageDevis({
+            missionId: ligne.mission_id,
+            expediteurId: user.id,
+            destinataireId: mission.recruteur_id,
+            devis: {
+              prestation: mission.description || "Mission proposée",
+              date: mission.date_mission,
+              heureDebut: ligne.heure_debut,
+              heureFin: ligne.heure_fin,
+              lieu: mission.lieu,
+              tarifHoraire: duree > 0 ? Math.round((ligne.tarif_applique / duree) * 100) / 100 : ligne.tarif_applique,
+              montantTotal,
+            },
+          });
+        }
+      }
     }
   }
 
@@ -175,7 +230,7 @@ export async function annulerMission(missionId: string): Promise<ActionResult> {
     .update({ statut: "annulee" })
     .eq("id", missionId);
   if (updateError) {
-    return { success: false, error: updateError.message };
+    return { success: false, error: traduireErreurDb(updateError, "Impossible d'annuler cette mission pour le moment.") };
   }
 
   const { data: paiement } = await admin
@@ -184,22 +239,35 @@ export async function annulerMission(missionId: string): Promise<ActionResult> {
     .eq("mission_id", missionId)
     .maybeSingle();
 
-  await admin
-    .from("paiements")
-    .update({ statut: "rembourse", date_deblocage: new Date().toISOString() })
-    .eq("mission_id", missionId);
-
-  // Remboursement Stripe réel, best-effort : si Stripe n'est pas
-  // encore configuré, le statut DB reflète déjà l'annulation — le
-  // remboursement effectif sera à réconcilier manuellement une fois
-  // les clés en place.
+  // Le statut `rembourse` n'est écrit qu'une fois le remboursement
+  // Stripe réellement confirmé — jamais avant, pour ne pas afficher au
+  // recruteur un remboursement qui n'a pas réellement eu lieu (carte
+  // expirée, Stripe indisponible, etc.). Si aucun paiement Stripe
+  // n'existe (clé pas encore configurée à l'époque du paiement), il
+  // n'y a rien à rembourser côté Stripe : le statut DB peut refléter
+  // l'annulation directement.
   if (paiement?.stripe_payment_intent_id) {
     try {
       const stripe = getStripeClient();
       await stripe.refunds.create({ payment_intent: paiement.stripe_payment_intent_id });
+      await admin
+        .from("paiements")
+        .update({ statut: "rembourse", date_deblocage: new Date().toISOString() })
+        .eq("mission_id", missionId);
     } catch {
-      // Ignoré volontairement — voir commentaire ci-dessus.
+      // La mission reste annulée (le recruteur ne sera plus facturé
+      // pour rien de plus). Le paiement bascule sur `echec` — jamais
+      // laissé silencieusement à `sequestre` — pour apparaître dans le
+      // KPI admin dédié (lib/admin/dashboard.ts) et dans l'écran de
+      // suivi des versements (module Finances) : à réconcilier
+      // manuellement depuis l'admin plutôt que de rester invisible.
+      await admin.from("paiements").update({ statut: "echec" }).eq("mission_id", missionId);
     }
+  } else {
+    await admin
+      .from("paiements")
+      .update({ statut: "rembourse", date_deblocage: new Date().toISOString() })
+      .eq("mission_id", missionId);
   }
 
   const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
@@ -292,7 +360,7 @@ export async function declarerServiceFaitLigne(ligneId: string): Promise<ActionR
     .update({ service_fait: true })
     .eq("id", ligneId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer cette déclaration pour le moment.") };
   }
 
   await admin.from("missions").update({ statut: "en_cours" }).eq("id", ligne.mission_id).eq("statut", "confirmee");
@@ -352,7 +420,7 @@ export async function confirmerServiceFait(missionId: string): Promise<ActionRes
     .update({ statut: "terminee", service_fait: true })
     .eq("id", missionId);
   if (missionError) {
-    return { success: false, error: missionError.message };
+    return { success: false, error: traduireErreurDb(missionError, "Impossible de confirmer cette mission pour le moment.") };
   }
 
   const { error: paiementError } = await admin
@@ -360,7 +428,7 @@ export async function confirmerServiceFait(missionId: string): Promise<ActionRes
     .update({ statut: "libere", date_deblocage: new Date().toISOString() })
     .eq("mission_id", missionId);
   if (paiementError) {
-    return { success: false, error: paiementError.message };
+    return { success: false, error: traduireErreurDb(paiementError, "Impossible de débloquer le paiement pour le moment.") };
   }
 
   const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
@@ -375,6 +443,7 @@ export async function confirmerServiceFait(missionId: string): Promise<ActionRes
           lien: `/missions/${missionId}`,
           missionId,
         }),
+        envoyerEmailPaiementDebloque(userId, missionId),
         creerMessageSysteme({
           missionId,
           expediteurId: user.id,
@@ -425,7 +494,7 @@ export async function contesterMission(missionId: string, motif: string): Promis
     .update({ statut: "litige", motif_litige: motif.trim() })
     .eq("id", missionId);
   if (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: traduireErreurDb(error, "Impossible d'ouvrir la contestation pour le moment.") };
   }
 
   const prestataireUserIds = await getPrestataireUserIds(admin, missionId);
