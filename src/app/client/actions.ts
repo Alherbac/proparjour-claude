@@ -1,0 +1,155 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { creerClientSession, creerClientAdmin } from "@/app/client/_supabase";
+import { heuresEntre } from "@/app/client/_lib";
+import type { MissionStatutType } from "@/lib/supabase/database.types";
+
+type Resultat = { success: true; missionId?: string | null } | { success: false; error: string };
+
+/**
+ * "Retenir" une candidature — même effet réel que le parcours
+ * existant (statut → "en_discussion", jamais "acceptee" directement :
+ * seul un paiement de devis confirmé engage réellement, cf. le
+ * commentaire de repondreCandidature dans actions/offres.ts, lu pour
+ * comprendre le comportement attendu, jamais importé). Crée la
+ * mission via la fonction Postgres `creer_mission_depuis_candidature`
+ * (infrastructure de base de données, pas un fichier applicatif
+ * réutilisé) avec le taux de commission par défaut réellement
+ * appliqué par la plateforme (table `parametres_commission`, repli
+ * 15 % — TAUX_COMMISSION_DEFAUT, src/lib/stripe/server.ts).
+ *
+ * Simplification assumée et à signaler : la hiérarchie de taux
+ * individuel/segment n'est pas relue ici, seulement le taux global —
+ * ce écran isolé ne doit pas dupliquer toute la logique de
+ * src/lib/commission.ts.
+ */
+export async function retenirCandidature(candidatureId: string): Promise<Resultat> {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Vous devez être connecté." };
+
+  const { data: candidature } = await supabase.from("candidatures").select("id, offre_id, prestataire_id, statut").eq("id", candidatureId).maybeSingle();
+  if (!candidature) return { success: false, error: "Candidature introuvable." };
+  if (candidature.statut !== "en_attente") return { success: false, error: "Cette candidature a déjà reçu une réponse." };
+
+  const { error: updateError } = await supabase.from("candidatures").update({ statut: "en_discussion" }).eq("id", candidatureId);
+  if (updateError) return { success: false, error: "Impossible d'enregistrer votre réponse pour le moment." };
+
+  const admin = creerClientAdmin();
+  const [{ data: offre }, { data: profil }, { data: parametresCommission }] = await Promise.all([
+    supabase.from("offres").select("titre, description, metier, ville, date_mission, heure_debut, heure_fin, tarif_horaire").eq("id", candidature.offre_id).maybeSingle(),
+    admin.from("prestataires_profils").select("id, user_id").eq("id", candidature.prestataire_id).maybeSingle(),
+    admin.from("parametres_commission").select("taux").eq("id", true).maybeSingle(),
+  ]);
+
+  if (!offre || !profil) {
+    revalidatePath("/client/candidatures");
+    return { success: true, missionId: null };
+  }
+
+  await supabase.from("offres").update({ statut: "pourvue" }).eq("id", candidature.offre_id);
+  // Une offre ne porte qu'un seul poste dans ce schéma : retenir un
+  // candidat écarte automatiquement les autres candidatures encore en
+  // attente sur la même offre (elles restent réintégrables).
+  await supabase.from("candidatures").update({ statut: "refusee" }).eq("offre_id", candidature.offre_id).eq("statut", "en_attente");
+
+  const heures = heuresEntre(offre.heure_debut, offre.heure_fin);
+  const montantTotal = Math.round(heures * offre.tarif_horaire * 100) / 100;
+  const tauxCommission = parametresCommission?.taux ?? 15;
+  const montantCommission = Math.round(montantTotal * (tauxCommission / 100) * 100) / 100;
+
+  const { data: missionId, error: missionError } = await admin.rpc("creer_mission_depuis_candidature", {
+    p_recruteur_id: user.id,
+    p_offre_id: candidature.offre_id,
+    p_candidature_id: candidature.id,
+    p_prestataire_id: profil.id,
+    p_metier: offre.metier,
+    p_lieu: offre.ville,
+    p_date_mission: offre.date_mission,
+    p_heure_debut: offre.heure_debut,
+    p_heure_fin: offre.heure_fin,
+    p_tarif_applique: montantTotal,
+    p_montant_total: montantTotal,
+    p_taux_commission: tauxCommission,
+    p_montant_commission: montantCommission,
+    p_description: offre.description || null,
+  });
+  if (missionError || !missionId) {
+    return { success: false, error: "Candidature retenue, mais la création de la mission a échoué — contactez le support." };
+  }
+
+  // Un message de type "systeme" ne passe pas la policy RLS d'un
+  // utilisateur normal (constaté en vérification live : l'insert
+  // échouait silencieusement via le client de session) — le
+  // comportement réel du site les insère via le client admin (voir
+  // creerMessageSysteme, lib/messages.ts, lu pour comprendre l'écart,
+  // jamais importé : Règle N°0).
+  await admin.from("messages").insert({
+    mission_id: missionId,
+    expediteur_id: user.id,
+    destinataire_id: profil.user_id,
+    contenu: "✅ Votre candidature a été retenue — vous pouvez échanger, puis envoyer votre devis.",
+    type: "systeme",
+    lu: false,
+  });
+  await admin.from("notifications").insert({
+    user_id: profil.user_id,
+    type: "candidature_retenue",
+    titre: "Candidature retenue",
+    contenu: offre.titre,
+    lien: `/missions/${missionId}`,
+    mission_id: missionId,
+    lu: false,
+  });
+
+  revalidatePath("/client/candidatures");
+  revalidatePath("/client");
+  return { success: true, missionId };
+}
+
+export async function reintegrerCandidature(candidatureId: string): Promise<Resultat> {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Vous devez être connecté." };
+
+  const { error } = await supabase.from("candidatures").update({ statut: "en_attente" }).eq("id", candidatureId);
+  if (error) return { success: false, error: "Impossible de réintégrer cette candidature pour le moment." };
+
+  revalidatePath("/client/candidatures");
+  revalidatePath("/client");
+  return { success: true };
+}
+
+const STATUTS_MISSION_BLOQUANTS: MissionStatutType[] = ["en_attente", "confirmee", "en_cours"];
+
+/** Suppression de compte — motif obligatoire, bloquée si une mission n'est pas encore terminée (dossier design §4 "Paramètres"). */
+export async function demanderSuppressionCompte(motif: string): Promise<Resultat> {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Vous devez être connecté." };
+  if (!motif.trim()) return { success: false, error: "Un motif est requis." };
+
+  const { data: missionBloquante } = await supabase
+    .from("missions")
+    .select("id, lieu")
+    .eq("recruteur_id", user.id)
+    .in("statut", STATUTS_MISSION_BLOQUANTS)
+    .limit(1)
+    .maybeSingle();
+  if (missionBloquante) {
+    return { success: false, error: `Une mission en cours (${missionBloquante.lieu}) doit d'abord être terminée.` };
+  }
+
+  const { error } = await supabase.from("demandes_suppression_compte").insert({ user_id: user.id, motif, statut: "en_attente" });
+  if (error) return { success: false, error: "Impossible d'enregistrer votre demande pour le moment." };
+
+  revalidatePath("/client/parametres");
+  return { success: true };
+}
