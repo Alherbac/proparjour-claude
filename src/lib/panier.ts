@@ -27,6 +27,11 @@ export type LignePanier = {
   tarifMontant: number;
   tarifType: TarifType;
   photoUrl: string | null;
+  /** Dossier design, écran "Panier" — {{c.meta}}/{{c.qualifs}} : mêmes
+   * certifications que la fiche publique, jamais une donnée inventée
+   * pour le panier. Optionnel pour rester compatible avec un panier
+   * déjà en localStorage avant l'ajout de ce champ. */
+  certifications?: string[];
 };
 
 export type Panier = {

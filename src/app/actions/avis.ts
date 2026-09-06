@@ -81,7 +81,7 @@ export async function laisserAvis(
     type: "nouvel_avis",
     titre: "Nouvel avis reçu",
     contenu: `${mission.lieu} — ${mission.date_mission}`,
-    lien: estRecruteur ? undefined : "/tableau-de-bord",
+    lien: estRecruteur ? undefined : "/prestataire",
     missionId: mission.id,
   });
 

@@ -23,9 +23,11 @@ function tempsEcoule(dateIso: string): string {
 export function NotificationBell({
   userId,
   notificationsInitiales,
+  voirToutHref,
 }: {
   userId: string;
   notificationsInitiales: NotificationsRow[];
+  voirToutHref: string;
 }) {
   const [notifications, setNotifications] = useState(notificationsInitiales);
   const [ouvert, setOuvert] = useState(false);
@@ -140,6 +142,13 @@ export function NotificationBell({
               );
             })}
           </div>
+          <Link
+            href={voirToutHref}
+            onClick={() => setOuvert(false)}
+            className="block border-t border-border px-3 py-2.5 text-center text-sm font-medium text-primary hover:underline"
+          >
+            Voir toutes les notifications
+          </Link>
         </div>
       )}
     </div>

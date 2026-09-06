@@ -11,6 +11,16 @@ export type CandidatureAvecPrestataire = CandidaturesRow & {
   prenom: string | null;
   nom: string | null;
   photo_url: string | null;
+  titre: string | null;
+  statut_verification: string | null;
+  specialites: string[];
+  tarif_montant: number | null;
+  tarif_type: string | null;
+  // Mission née de cette candidature (voir repondreCandidature →
+  // creer_mission_depuis_candidature) — null tant qu'elle n'a pas été
+  // retenue. Permet à "en_discussion" de rouvrir la conversation
+  // existante plutôt que d'en recréer une.
+  missionId: string | null;
 };
 
 export type OffreAvecCandidatures = OffresRow & {
@@ -60,8 +70,22 @@ export async function getOffresRecruteur(recruteurId: string): Promise<OffreAvec
   const admin = createAdminClient();
   const { data: profils } =
     prestataireIds.length > 0
-      ? await admin.from("prestataires_profils").select("id, photo_url, user_id").in("id", prestataireIds)
-      : { data: [] as { id: string; photo_url: string | null; user_id: string }[] };
+      ? await admin
+          .from("prestataires_profils")
+          .select("id, photo_url, user_id, titre, statut_verification, specialites, tarif_montant, tarif_type")
+          .in("id", prestataireIds)
+      : {
+          data: [] as {
+            id: string;
+            photo_url: string | null;
+            user_id: string;
+            titre: string | null;
+            statut_verification: string | null;
+            specialites: string[];
+            tarif_montant: number | null;
+            tarif_type: string | null;
+          }[],
+        };
   const userIds = (profils ?? []).map((p) => p.user_id);
   const { data: usersData } =
     userIds.length > 0
@@ -70,8 +94,25 @@ export async function getOffresRecruteur(recruteurId: string): Promise<OffreAvec
   const userParId = new Map((usersData ?? []).map((u) => [u.id, u]));
   const prestataires = (profils ?? []).map((p) => {
     const u = userParId.get(p.user_id);
-    return { id: p.id, prenom: u?.prenom ?? null, nom: u?.nom ?? null, photo_url: p.photo_url };
+    return {
+      id: p.id,
+      prenom: u?.prenom ?? null,
+      nom: u?.nom ?? null,
+      photo_url: p.photo_url,
+      titre: p.titre,
+      statut_verification: p.statut_verification,
+      specialites: p.specialites,
+      tarif_montant: p.tarif_montant,
+      tarif_type: p.tarif_type,
+    };
   });
+
+  const candidatureIds = (candidatures ?? []).map((c) => c.id);
+  const { data: missionsLiees } =
+    candidatureIds.length > 0
+      ? await supabase.from("missions").select("id, candidature_id").in("candidature_id", candidatureIds)
+      : { data: [] as { id: string; candidature_id: string | null }[] };
+  const missionIdParCandidature = new Map((missionsLiees ?? []).map((m) => [m.candidature_id, m.id]));
 
   const parPrestataire = new Map(prestataires.map((p) => [p.id, p]));
   const parOffre = new Map<string, CandidatureAvecPrestataire[]>();
@@ -82,6 +123,12 @@ export async function getOffresRecruteur(recruteurId: string): Promise<OffreAvec
       prenom: p?.prenom ?? null,
       nom: p?.nom ?? null,
       photo_url: p?.photo_url ?? null,
+      titre: p?.titre ?? null,
+      statut_verification: p?.statut_verification ?? null,
+      specialites: p?.specialites ?? [],
+      tarif_montant: p?.tarif_montant ?? null,
+      tarif_type: p?.tarif_type ?? null,
+      missionId: missionIdParCandidature.get(c.id) ?? null,
     };
     parOffre.set(c.offre_id, [...(parOffre.get(c.offre_id) ?? []), enrichie]);
   }
@@ -162,6 +209,8 @@ export type ProfilCandidat = {
   statutVerification: string;
   formations: { id: string; etablissement: string; diplome: string; anneeObtention: number | null }[];
   experiences: { id: string; intitule: string; employeur: string | null; periode: string; description: string | null }[];
+  /** Statut courant de la candidature — permet à la page d'afficher "Écrire au candidat" seulement tant que retenirCandidature reste possible (statut "en_attente"). */
+  candidatureStatut: string;
 };
 
 /**
@@ -178,7 +227,7 @@ export async function getProfilCandidat(candidatureId: string, recruteurId: stri
   const supabase = await createClient();
   const { data: candidature } = await supabase
     .from("candidatures")
-    .select("prestataire_id, offre_id")
+    .select("prestataire_id, offre_id, statut")
     .eq("id", candidatureId)
     .maybeSingle();
   if (!candidature) return null;
@@ -236,5 +285,6 @@ export async function getProfilCandidat(candidatureId: string, recruteurId: stri
       periode: e.periode,
       description: e.description,
     })),
+    candidatureStatut: candidature.statut,
   };
 }

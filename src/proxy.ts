@@ -11,7 +11,7 @@ function estRouteReserveeRecruteurs(pathname: string) {
  * qu'un prestataire connecté n'accède pas à la landing page ni à la
  * recherche/fiche publique d'autres prestataires — il ne recrute
  * personne, seules ses missions le concernent (voir
- * `/tableau-de-bord/missions`). Le reste des vérifications
+ * `/prestataire/missions`). Le reste des vérifications
  * d'autorisation se fait toujours page par page via
  * lib/supabase/server.ts.
  */
@@ -65,7 +65,7 @@ export async function proxy(request: NextRequest) {
     // voit) — seule la redirection par défaut de "/" vers /admin,
     // gérée page par page, s'applique à lui.
     if (profil?.type === "prestataire" && !estAdmin && !estModerateur) {
-      return NextResponse.redirect(new URL("/tableau-de-bord/accueil", request.url));
+      return NextResponse.redirect(new URL("/prestataire", request.url));
     }
   }
 

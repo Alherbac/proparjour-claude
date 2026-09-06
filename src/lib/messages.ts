@@ -1,14 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { MessagesRow } from "@/lib/supabase/database.types";
+import type { MetierId } from "@/config/metiers";
+import type { MessagesRow, MessageType } from "@/lib/supabase/database.types";
 
 export type Conversation = {
   missionId: string;
+  autreId: string;
   lieu: string;
   dateMission: string;
   autreNom: string;
+  metier: MetierId | null;
   dernierMessage: string | null;
   dernierMessageAt: string | null;
+  // Type du tout dernier message du fil — "devis" signale une
+  // proposition pas encore répondue (le prochain message, quel qu'il
+  // soit, la remplace), sert au filtre "Devis en attente" de la liste
+  // des conversations.
+  dernierMessageType: MessageType | null;
   nonLus: number;
 };
 
@@ -40,6 +48,8 @@ export async function creerMessageSysteme(params: {
   }
 }
 
+export type DevisStatut = "en_attente" | "acceptee" | "ajustement_demande" | "refusee";
+
 export type DevisPayload = {
   prestation: string;
   date: string;
@@ -48,6 +58,15 @@ export type DevisPayload = {
   lieu: string;
   tarifHoraire: number;
   montantTotal: number;
+  // Absent sur les devis créés avant ce chantier (parcours candidature
+  // historique, parcours panier) : traité comme "acceptee" partout où
+  // c'est lu, pour ne rien changer au comportement déjà en production
+  // sur ces deux chemins. Seul le nouveau devis envoyé manuellement
+  // par le prestataire (voir actions/missions.ts, envoyerDevis) part
+  // à "en_attente" et exige une acceptation explicite du client avant
+  // de pouvoir payer.
+  statut?: DevisStatut;
+  noteAjustement?: string;
 };
 
 /**
@@ -258,10 +277,10 @@ export async function getConversationsUtilisateur(): Promise<Conversation[]> {
   const missionIds = missions.map((m) => m.id);
 
   const [{ data: lignes }, { data: messages }, nonLusParMission] = await Promise.all([
-    admin.from("mission_lignes").select("mission_id, prestataire_id").in("mission_id", missionIds),
+    admin.from("mission_lignes").select("mission_id, prestataire_id, metier").in("mission_id", missionIds),
     supabase
       .from("messages")
-      .select("mission_id, contenu, created_at, expediteur_id, destinataire_id")
+      .select("mission_id, contenu, created_at, expediteur_id, destinataire_id, type")
       .in("mission_id", missionIds)
       .or(`expediteur_id.eq.${user.id},destinataire_id.eq.${user.id}`)
       .order("created_at", { ascending: false }),
@@ -275,16 +294,32 @@ export async function getConversationsUtilisateur(): Promise<Conversation[]> {
       : { data: [] as { id: string; user_id: string }[] };
   const userIdParProfilId = new Map((prestataireProfils ?? []).map((p) => [p.id, p.user_id]));
 
-  const contreParties = new Set<string>();
+  // Une entrée par (mission, contact) — un fil par binôme, jamais un
+  // chat de groupe (voir 0010_messages.sql) : une mission à plusieurs
+  // prestataires doit donc apparaître en plusieurs lignes ici, une par
+  // prestataire, jamais fusionnées en une seule ligne "M. X, Mme Y".
+  const pairesParMission = new Map<string, { autreId: string; metier: string | null }[]>();
   for (const mission of missions) {
     if (estRecruteurDe.has(mission.id)) {
-      for (const l of (lignes ?? []).filter((l) => l.mission_id === mission.id)) {
-        const uid = userIdParProfilId.get(l.prestataire_id);
-        if (uid) contreParties.add(uid);
-      }
+      const paires = (lignes ?? [])
+        .filter((l) => l.mission_id === mission.id)
+        .map((l) => {
+          const uid = userIdParProfilId.get(l.prestataire_id);
+          return uid ? { autreId: uid, metier: l.metier as string } : null;
+        })
+        .filter((v): v is { autreId: string; metier: string } => v !== null);
+      pairesParMission.set(mission.id, paires);
     } else {
-      contreParties.add(mission.recruteur_id);
+      const maLigne = (lignes ?? []).find(
+        (l) => l.mission_id === mission.id && userIdParProfilId.get(l.prestataire_id) === user.id,
+      );
+      pairesParMission.set(mission.id, [{ autreId: mission.recruteur_id, metier: (maLigne?.metier as string) ?? null }]);
     }
+  }
+
+  const contreParties = new Set<string>();
+  for (const paires of pairesParMission.values()) {
+    for (const p of paires) contreParties.add(p.autreId);
   }
   const { data: usersContreParties } =
     contreParties.size > 0
@@ -294,35 +329,33 @@ export async function getConversationsUtilisateur(): Promise<Conversation[]> {
     (usersContreParties ?? []).map((u) => [u.id, `${u.prenom ?? ""} ${u.nom ?? ""}`.trim() || "Utilisateur ProParJour"]),
   );
 
-  const dernierMessageParMission = new Map<string, MessagesRow>();
-  for (const m of messages ?? []) {
-    if (!dernierMessageParMission.has(m.mission_id)) {
-      dernierMessageParMission.set(m.mission_id, m as MessagesRow);
+  const dernierMessageParPaire = new Map<string, MessagesRow>();
+  for (const m of (messages ?? []) as MessagesRow[]) {
+    const autre = m.expediteur_id === user.id ? m.destinataire_id : m.expediteur_id;
+    const cle = `${m.mission_id}:${autre}`;
+    if (!dernierMessageParPaire.has(cle)) {
+      dernierMessageParPaire.set(cle, m);
     }
   }
 
-  const conversations: Conversation[] = missions.map((mission) => {
-    let autreNom = "Utilisateur ProParJour";
-    if (estRecruteurDe.has(mission.id)) {
-      const prestataireIds = (lignes ?? [])
-        .filter((l) => l.mission_id === mission.id)
-        .map((l) => userIdParProfilId.get(l.prestataire_id))
-        .filter((v): v is string => Boolean(v));
-      autreNom = prestataireIds.map((id) => nomParUserId.get(id)).filter(Boolean).join(", ") || autreNom;
-    } else {
-      autreNom = nomParUserId.get(mission.recruteur_id) ?? autreNom;
-    }
-    const dernier = dernierMessageParMission.get(mission.id);
-    return {
-      missionId: mission.id,
-      lieu: mission.lieu,
-      dateMission: mission.date_mission,
-      autreNom,
-      dernierMessage: dernier?.contenu ?? null,
-      dernierMessageAt: dernier?.created_at ?? null,
-      nonLus: nonLusParMission[mission.id] ?? 0,
-    };
-  });
+  const conversations: Conversation[] = missions.flatMap((mission) =>
+    (pairesParMission.get(mission.id) ?? []).map((paire) => {
+      const cle = `${mission.id}:${paire.autreId}`;
+      const dernier = dernierMessageParPaire.get(cle);
+      return {
+        missionId: mission.id,
+        autreId: paire.autreId,
+        lieu: mission.lieu,
+        dateMission: mission.date_mission,
+        autreNom: nomParUserId.get(paire.autreId) ?? "Utilisateur ProParJour",
+        metier: (paire.metier as MetierId | null) ?? null,
+        dernierMessage: dernier?.contenu ?? null,
+        dernierMessageAt: dernier?.created_at ?? null,
+        dernierMessageType: dernier?.type ?? null,
+        nonLus: nonLusParMission[mission.id] ?? 0,
+      };
+    }),
+  );
 
   return conversations.sort((a, b) => {
     if (a.dernierMessageAt && b.dernierMessageAt) {

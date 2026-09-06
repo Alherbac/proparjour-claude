@@ -4,10 +4,47 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminRole } from "@/lib/admin/auth";
 import { creerNotification } from "@/lib/notifications";
 import { traduireErreurDb } from "@/lib/erreurs-db";
+import { journaliser } from "@/lib/admin/audit";
+import { getDossierKyc, getVerificationsAutomatiques, calculerCredibilite, type DossierKyc, type VerificationAuto } from "@/lib/admin/kyc";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
   | { success: false; error: string };
+
+/** Charge le détail complet d'un dossier à la demande (§5.3, clic sur une ligne) — évite de tout précalculer pour la file entière. */
+export async function chargerDetailKyc(
+  profilId: string,
+): Promise<ActionResult<{ dossier: DossierKyc; verifications: VerificationAuto[]; credibilite: number } | null>> {
+  await requireAdminRole();
+  const dossier = await getDossierKyc(profilId);
+  if (!dossier) return { success: true, data: null };
+  const admin = createAdminClient();
+  const verifications = await getVerificationsAutomatiques(dossier, admin);
+  return { success: true, data: { dossier, verifications, credibilite: calculerCredibilite(dossier) } };
+}
+
+/**
+ * Révèle l'IBAN/BIC — journalisé à chaque appel (donnée sensible).
+ * Précision honnête : ces colonnes sont stockées en clair (migration
+ * 0029, pas de chiffrement au repos), donc "déchiffrer" ici veut dire
+ * "afficher" — le masquage 30 s côté client reste une bonne pratique
+ * d'accès, mais ne doit pas laisser croire à un chiffrement qui
+ * n'existe pas. Voir rapport final.
+ */
+export async function reveleIbanDossier(profilId: string): Promise<ActionResult<{ iban: string | null; bic: string | null }>> {
+  const session = await requireAdminRole();
+  const admin = createAdminClient();
+  const { data } = await admin.from("prestataires_profils").select("iban, bic").eq("id", profilId).maybeSingle();
+
+  await journaliser({
+    adminId: session.userId,
+    action: "iban_consulte",
+    cibleType: "prestataire_profil",
+    cibleId: profilId,
+  });
+
+  return { success: true, data: { iban: data?.iban ?? null, bic: data?.bic ?? null } };
+}
 
 export async function validerJustificatif(justificatifId: string): Promise<ActionResult> {
   const session = await requireAdminRole();
@@ -71,7 +108,7 @@ export async function validerDossier(profilId: string): Promise<ActionResult> {
     type: "profil_valide",
     titre: "Profil validé",
     contenu: "Votre profil est vérifié — vous êtes maintenant visible dans les recherches.",
-    lien: "/tableau-de-bord/compte",
+    lien: "/prestataire/profil",
   });
 
   return { success: true };
@@ -102,7 +139,7 @@ export async function refuserDossier(profilId: string, motif: string): Promise<A
     type: "profil_refuse",
     titre: "Profil refusé",
     contenu: motif.trim(),
-    lien: "/tableau-de-bord/compte",
+    lien: "/prestataire/profil",
   });
 
   return { success: true };
@@ -124,7 +161,7 @@ export async function demanderDocument(profilId: string, message: string): Promi
     type: "document_demande",
     titre: "Document à fournir",
     contenu: message.trim() || "Un document complémentaire est nécessaire pour valider votre profil.",
-    lien: "/tableau-de-bord/compte",
+    lien: "/prestataire/profil",
   });
 
   return { success: true };

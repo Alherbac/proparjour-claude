@@ -197,7 +197,7 @@ export default async function PrestataireVotreActivite() {
                     <span className="text-[15px] text-[#1A1917]" style={{ fontFamily: "var(--font-instrument-serif)" }}>
                       {remuneration} €
                     </span>
-                    <Link href={`/tableau-de-bord/offres/${o.id}`}>
+                    <Link href={`/prestataire/opportunites/${o.id}`}>
                       <DashButton variant="sombre">Candidater</DashButton>
                     </Link>
                   </div>

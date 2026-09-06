@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { RecruteurForm } from "@/components/onboarding/recruteur/form";
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function InscriptionRecruteurPage() {
-  return <RecruteurForm />;
+  return (
+    <Suspense>
+      <RecruteurForm />
+    </Suspense>
+  );
 }

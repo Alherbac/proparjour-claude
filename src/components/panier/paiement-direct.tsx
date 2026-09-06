@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
-import { Button } from "@/components/ui/button";
+import { DashButton } from "@/app/client/_components/button";
 import { creerIntentionPaiement, type LigneReservation } from "@/app/actions/commande";
 import { CheckoutForm } from "@/components/panier/checkout-form";
 
@@ -53,12 +53,10 @@ export function PaiementDirect({ lignes, serieId }: { lignes: LigneReservation[]
 
   if (clientSecret) {
     if (!stripePromise) {
-      return (
-        <p className="text-sm font-medium text-destructive">Le paiement n&apos;est pas encore configuré sur cette instance.</p>
-      );
+      return <p className="text-[13px] font-medium" style={{ color: "#8E2A26" }}>Le paiement n&apos;est pas encore configuré sur cette instance.</p>;
     }
     return (
-      <div className="rounded-2xl border border-border bg-secondary/30 p-5">
+      <div className="rounded-[18px] border border-[#EAE6E0] bg-white p-5">
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <CheckoutForm lignes={lignes} montant={montant ?? 0} />
         </Elements>
@@ -68,11 +66,15 @@ export function PaiementDirect({ lignes, serieId }: { lignes: LigneReservation[]
 
   return (
     <div className="space-y-3">
-      {erreur && <p className="text-sm font-medium text-destructive">{erreur}</p>}
-      <Button type="button" className="w-full rounded-full" disabled={chargement} onClick={handleProcederPaiement}>
+      {erreur && (
+        <p className="text-[13px] font-medium" style={{ color: "#8E2A26" }}>
+          {erreur}
+        </p>
+      )}
+      <DashButton type="button" variant="plein" className="w-full" disabled={chargement} onClick={handleProcederPaiement}>
         {chargement ? "Préparation du paiement..." : "Confirmer et payer"}
-      </Button>
-      <p className="text-center text-xs text-muted-foreground">
+      </DashButton>
+      <p className="text-center text-[12px] text-[#6B6660]">
         Paiement sécurisé. Les fonds sont séquestrés et versés après confirmation du service fait.
       </p>
     </div>

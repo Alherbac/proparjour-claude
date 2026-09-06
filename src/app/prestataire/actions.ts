@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { creerClientSession, creerClientAdmin } from "@/app/prestataire/_supabase";
+import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
 import type { LigneStatutType } from "@/lib/supabase/database.types";
 
 type Resultat = { success: true } | { success: false; error: string };
@@ -152,6 +153,16 @@ export async function ajouterExperience(input: ExperienceInput): Promise<Resulta
   const profilId = await verifierProfil(user.id);
   if (!profilId) return { success: false, error: "Profil introuvable." };
   if (!input.intitule.trim() || !input.periode.trim()) return { success: false, error: "L'intitulé et la période sont requis." };
+  // Même contrôle que le reste du profil (voir mettreAJourProfilPrestataire,
+  // actions/compte.ts) : une expérience s'affiche aussi sur la fiche
+  // candidat/publique, un vecteur de contournement au même titre que
+  // le titre ou la bio.
+  for (const champ of [input.intitule, input.employeur, input.lieu, input.description]) {
+    const coordonnees = detecterCoordonnees(champ);
+    if (coordonnees) {
+      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
+    }
+  }
 
   const { error } = await supabase.from("experiences").insert({
     prestataire_id: profilId,

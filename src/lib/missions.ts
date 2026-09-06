@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { heuresEntre } from "@/lib/duree";
 import type {
   MissionLignesRow,
   MissionsRow,
@@ -128,6 +129,48 @@ export async function getStatutPaiementMission(missionId: string): Promise<Paiem
   const admin = createAdminClient();
   const { data } = await admin.from("paiements").select("statut").eq("mission_id", missionId).maybeSingle();
   return data?.statut ?? null;
+}
+
+export type DevisPrefillMission = {
+  prestation: string;
+  date: string;
+  heureDebut: string;
+  heureFin: string;
+  lieu: string;
+  tarifHoraire: number;
+};
+
+/**
+ * Prérempli du formulaire d'envoi de devis (prestataire uniquement,
+ * voir EnvoyerDevisForm, message-thread.tsx) — factorisé pour être
+ * identique que l'écran d'origine soit /missions/[id] ou la
+ * messagerie deux colonnes (/tableau-de-bord/messagerie).
+ */
+export async function getDevisPrefillPourMission(missionId: string, userId: string): Promise<DevisPrefillMission | null> {
+  const supabase = await createClient();
+  const { data: profil } = await supabase.from("prestataires_profils").select("id").eq("user_id", userId).maybeSingle();
+  if (!profil) return null;
+
+  const [{ data: mission }, { data: ligne }] = await Promise.all([
+    supabase.from("missions").select("description, date_mission, lieu").eq("id", missionId).maybeSingle(),
+    supabase
+      .from("mission_lignes")
+      .select("heure_debut, heure_fin, tarif_applique")
+      .eq("mission_id", missionId)
+      .eq("prestataire_id", profil.id)
+      .maybeSingle(),
+  ]);
+  if (!mission || !ligne) return null;
+
+  const duree = heuresEntre(ligne.heure_debut, ligne.heure_fin);
+  return {
+    prestation: mission.description || "Mission proposée",
+    date: mission.date_mission,
+    heureDebut: ligne.heure_debut,
+    heureFin: ligne.heure_fin,
+    lieu: mission.lieu,
+    tarifHoraire: duree > 0 ? Math.round((ligne.tarif_applique / duree) * 100) / 100 : ligne.tarif_applique,
+  };
 }
 
 export type LigneProposee = MissionLignesRow & {

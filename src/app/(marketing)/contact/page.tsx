@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Mail, Phone, MapPin, Clock } from "lucide-react";
 import { MarketingPageHeader } from "@/components/marketing/page-header";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Contact — ProParJour",
@@ -15,7 +16,17 @@ const COORDONNEES = [
   { icon: Clock, label: "Horaires", value: "Du lundi au vendredi, 9h – 18h", href: null },
 ] as const;
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let espaceHref = "/connexion?next=/client";
+  if (user) {
+    const { data: profil } = await supabase.from("users").select("type").eq("id", user.id).maybeSingle();
+    espaceHref = profil?.type === "prestataire" ? "/prestataire" : profil?.type === "admin" ? "/admin" : "/client";
+  }
+
   return (
     <>
       <MarketingPageHeader
@@ -51,8 +62,8 @@ export default function ContactPage() {
         <p className="mx-auto mt-10 max-w-[800px] text-sm leading-[1.65] text-muted-landing">
           Vous êtes déjà inscrit·e ? Pour toute question liée à une mission en cours,
           passez par la messagerie de votre{" "}
-          <a href="/tableau-de-bord" className="font-medium text-sec underline underline-offset-2">
-            tableau de bord
+          <a href={espaceHref} className="font-medium text-sec underline underline-offset-2">
+            espace
           </a>{" "}
           — c&apos;est le canal le plus rapide.
         </p>

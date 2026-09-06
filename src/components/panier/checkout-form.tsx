@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { DashButton } from "@/app/client/_components/button";
 import { finaliserCommande, type LigneReservation } from "@/app/actions/commande";
 import { lireSerieEnAttente, oublierSerieEnAttente } from "@/lib/serie-en-attente";
 import { rattacherMissionsASerie } from "@/app/actions/series";
@@ -61,26 +61,25 @@ export function CheckoutForm({
     if (serieEnAttente) {
       await rattacherMissionsASerie(serieEnAttente, result.data.missionIds);
       oublierSerieEnAttente();
-      router.push(`/tableau-de-bord/series/${serieEnAttente}`);
+      router.push(`/client/series/${serieEnAttente}`);
       return;
     }
 
-    const [premierMissionId] = result.data.missionIds;
-    router.push(
-      result.data.missionIds.length === 1
-        ? `/tableau-de-bord?mission=${premierMissionId}`
-        : "/tableau-de-bord/missions",
-    );
+    router.push("/client/missions");
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement />
-      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
-      <Button type="submit" className="w-full rounded-full" disabled={submitting || !stripe}>
+      {error && (
+        <p className="text-[13px] font-medium" style={{ color: "#8E2A26" }}>
+          {error}
+        </p>
+      )}
+      <DashButton type="submit" variant="plein" className="w-full" disabled={submitting || !stripe}>
         {submitting && <Loader2 className="size-4 animate-spin" />}
         Payer {montant} € (fonds séquestrés jusqu&apos;à la mission)
-      </Button>
+      </DashButton>
     </form>
   );
 }

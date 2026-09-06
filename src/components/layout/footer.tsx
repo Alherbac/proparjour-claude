@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MarketingLogo } from "@/components/marketing/marketing-logo";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Refonte Claude Istanbul 1, §4.10 — footer clair (plus de bg-ink).
@@ -12,7 +13,7 @@ const COLONNES = [
   {
     titre: "Clients",
     liens: [
-      { href: "/prestataires", label: "Trouver un professionnel" },
+      { href: "/prestataires?mode=recherche", label: "Trouver un professionnel" },
       { href: "/#recherche", label: "Publier un besoin" },
       { href: "/#fonctionnement", label: "Comment ça marche" },
     ],
@@ -22,7 +23,7 @@ const COLONNES = [
     liens: [
       { href: "/inscription/prestataire", label: "Créer mon profil" },
       { href: "/#fonctionnement", label: "Comment ça marche" },
-      { href: "/tableau-de-bord/missions", label: "Missions" },
+      { href: "/prestataire/missions", label: "Missions" },
     ],
   },
   {
@@ -36,7 +37,18 @@ const COLONNES = [
   },
 ] as const;
 
-export function Footer() {
+export async function Footer() {
+  // Même règle que Header : un prestataire connecté revient à son
+  // propre espace via le logo, jamais à la landing client.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const profil = user
+    ? (await supabase.from("users").select("type").eq("id", user.id).maybeSingle()).data
+    : null;
+  const logoHref = profil?.type === "prestataire" ? "/prestataire" : "/";
+
   return (
     <footer className="border-t border-ppj-line-2 bg-ppj-paper" style={{ padding: "clamp(48px,6vw,72px) 0 32px" }}>
       <div
@@ -44,7 +56,7 @@ export function Footer() {
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))" }}
       >
         <div>
-          <MarketingLogo height={22} />
+          <MarketingLogo height={22} href={logoHref} />
           <p className="mt-3.5 max-w-[22em] text-[13.5px] text-ppj-text-4">
             Les professionnels de terrain, quand vous en avez besoin.
           </p>

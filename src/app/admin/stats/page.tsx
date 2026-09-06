@@ -1,23 +1,34 @@
 import type { Metadata } from "next";
 import { requireAdminSession } from "@/lib/admin/auth";
-import { getRepartitionParMetier, getRepartitionStatutMissions } from "@/lib/admin/statistiques";
+import { getRepartitionStatutMissions, getMissionsParMoisRecent } from "@/lib/admin/statistiques";
+import { getActivitePlateforme } from "@/lib/admin/dashboard";
+import { getOffreDemandeParVille } from "@/lib/admin/pilotage";
+import { getStatsLive, getStatsHistorique30j } from "@/lib/admin/analytics";
 import { StatistiquesScreen } from "@/components/admin/statistiques-screen";
 
 export const metadata: Metadata = { title: "Statistiques — Admin ProParJour" };
 
 export default async function AdminStatsPage() {
   await requireAdminSession();
-  const [repartitionMetier, { parStatut, total, tauxAnnulation }] = await Promise.all([
-    getRepartitionParMetier(),
+  const [activite30j, topVilles, missionsParMoisRecent, { parStatut, total, tauxAnnulation }, live, historique] = await Promise.all([
+    getActivitePlateforme("30j"),
+    getOffreDemandeParVille(),
+    getMissionsParMoisRecent(),
     getRepartitionStatutMissions(),
+    getStatsLive(),
+    getStatsHistorique30j(),
   ]);
 
   return (
     <StatistiquesScreen
-      repartitionMetier={repartitionMetier}
+      activite30j={activite30j}
+      topVilles={topVilles}
+      missionsParMoisRecent={missionsParMoisRecent}
       repartitionStatut={parStatut}
-      total={total}
+      totalMissions={total}
       tauxAnnulation={tauxAnnulation}
+      live={live}
+      historique={historique}
     />
   );
 }

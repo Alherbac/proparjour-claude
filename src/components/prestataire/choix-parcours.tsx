@@ -36,7 +36,7 @@ export function ChoixParcours() {
         </Link>
 
         <Link
-          href="/prestataires?mode=publier"
+          href="/publier-une-offre"
           className="group flex min-h-[264px] flex-col justify-between overflow-hidden rounded-[28px] bg-gradient-to-br from-primary via-primary to-red-900 p-7 text-white transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.16,0.84,0.44,1)] hover:-translate-y-1.5 hover:shadow-[var(--shadow-landing-lg)] motion-reduce:transition-none"
         >
           <div>

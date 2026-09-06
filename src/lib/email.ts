@@ -54,7 +54,7 @@ export async function envoyerEmailNouvelleOffre(userId: string, titreOffre: stri
     to: email,
     subject: `Nouvelle offre de mission — ${titreOffre}`,
     html: gabaritEmail("Nouvelle offre de mission", `${titreOffre} — ${detail}`, {
-      href: "/tableau-de-bord/offres",
+      href: "/prestataire/opportunites",
       label: "Voir l'offre",
     }),
   });

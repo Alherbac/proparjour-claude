@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { creerNotification } from "@/lib/notifications";
 import { getMessagesNonLusPourMission } from "@/lib/messages";
 import { traduireErreurDb } from "@/lib/erreurs-db";
+import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -37,6 +38,18 @@ export async function envoyerMessage(
   }
 
   const estRecruteur = mission.recruteur_id === user.id;
+
+  // Un prestataire ne doit pas pouvoir transmettre ses coordonnées
+  // personnelles au client pour sortir de ProParJour (voir
+  // lib/coordonnees-interdites.ts) — contrôle serveur, jamais
+  // seulement une validation d'interface. Le client, lui, reste libre
+  // (il peut légitimement donner l'adresse exacte de la mission, etc.).
+  if (!estRecruteur) {
+    const coordonnees = detecterCoordonnees(texte);
+    if (coordonnees) {
+      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
+    }
+  }
 
   if (estRecruteur) {
     const { data: lignes } = await admin

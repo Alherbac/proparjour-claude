@@ -21,7 +21,12 @@ export type NotificationType =
   | "candidature_acceptee"
   | "candidature_refusee"
   | "offre_cloturee"
-  | "nouvel_avis";
+  | "nouvel_avis"
+  | "devis_envoye"
+  | "devis_accepte"
+  | "devis_ajustement_demande"
+  | "devis_refuse"
+  | "message_admin";
 
 /**
  * Best-effort : une notification qui échoue à s'écrire ne doit jamais

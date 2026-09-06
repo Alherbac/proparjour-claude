@@ -140,7 +140,7 @@ export default async function ClientVueEnsemble() {
                     </p>
                     <p className="text-[12px] text-[#6B6660]">{c.tarifMontant} € / {c.tarifType === "horaire" ? "heure" : "jour"}</p>
                   </div>
-                  <Link href={`/prestataires/${c.prestataire_id}`} className="shrink-0">
+                  <Link href={`/client/candidats/${c.id}`} className="shrink-0">
                     <DashButton variant="secondaire">Profil</DashButton>
                   </Link>
                 </div>

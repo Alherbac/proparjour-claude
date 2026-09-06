@@ -6,6 +6,7 @@ import { MessageSquareWarning } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { statutAffiche } from "@/config/documents-requis";
 import type { DossierKyc } from "@/lib/admin/kyc";
+import { AdminBadge, type AdminBadgeTone } from "@/components/admin/ui/badge";
 
 const GROUPES = [
   { cle: "a_traiter", label: "À traiter" },
@@ -13,11 +14,11 @@ const GROUPES = [
   { cle: "refuses", label: "Refusés" },
 ] as const;
 
-const STATUT_BADGE: Record<string, { label: string; style: string }> = {
-  en_attente: { label: "🟠 En attente", style: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
-  partiel: { label: "🟡 Partiel", style: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
-  valide: { label: "🟢 Validé", style: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
-  refuse: { label: "🔴 Refusé", style: "bg-destructive/10 text-destructive" },
+const STATUT_BADGE: Record<string, { label: string; tone: AdminBadgeTone }> = {
+  en_attente: { label: "En attente", tone: "orange" },
+  partiel: { label: "Partiel", tone: "orange" },
+  valide: { label: "Validé", tone: "green" },
+  refuse: { label: "Refusé", tone: "red" },
 };
 
 const METIER_LABELS: Record<string, string> = {
@@ -53,11 +54,12 @@ export function KycQueue({ dossiers }: { dossiers: DossierKyc[] }) {
             aria-pressed={ongletActif === g.cle}
             onClick={() => setOngletActif(g.cle)}
             className={cn(
-              "shrink-0 rounded-full px-4 py-2 text-sm font-medium",
+              "shrink-0 rounded-[9px] px-4 py-2 text-[13px] font-semibold transition-colors",
               ongletActif === g.cle
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground",
+                ? "bg-[var(--a-accent)] text-white"
+                : "bg-[var(--a-surface-2)] text-[var(--a-ink)]",
             )}
+            style={{ fontFamily: "var(--a-font-display)" }}
           >
             {g.label} {g.dossiers.length > 0 && `(${g.dossiers.length})`}
           </button>
@@ -71,13 +73,13 @@ export function KycQueue({ dossiers }: { dossiers: DossierKyc[] }) {
             <Link
               key={dossier.profil.id}
               href={`/admin/validations/${dossier.profil.id}`}
-              className="flex items-center justify-between rounded-2xl border border-border bg-background p-4 shadow-sm transition-colors hover:border-primary/40"
+              className="flex items-center justify-between rounded-2xl border border-[var(--a-border)] bg-[var(--a-surface)] p-4 transition-colors hover:border-[var(--a-accent)]/40"
             >
               <div>
-                <p className="font-medium text-foreground">
+                <p className="font-semibold text-[var(--a-ink)]">
                   {dossier.user.prenom} {dossier.user.nom}
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-[13px] text-[var(--a-text-2)]">
                   {METIER_LABELS[dossier.profil.metier]} · {dossier.profil.ville} · inscrit le{" "}
                   {new Date(dossier.profil.created_at).toLocaleDateString("fr-FR")}
                 </p>
@@ -85,18 +87,16 @@ export function KycQueue({ dossiers }: { dossiers: DossierKyc[] }) {
               <div className="flex items-center gap-2">
                 {dossier.documentDejaDemande && (
                   <span title="Document déjà demandé">
-                    <MessageSquareWarning className="size-4 text-amber-600 dark:text-amber-400" />
+                    <MessageSquareWarning className="size-4" style={{ color: "var(--a-orange)" }} />
                   </span>
                 )}
-                <span className={cn("rounded-full px-3 py-1 text-xs font-medium", badge.style)}>
-                  {badge.label}
-                </span>
+                <AdminBadge tone={badge.tone}>{badge.label}</AdminBadge>
               </div>
             </Link>
           );
         })}
         {actifs.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">Rien ici pour l&apos;instant.</p>
+          <p className="py-8 text-center text-[13px] text-[var(--a-text-3)]">Rien ici pour l&apos;instant.</p>
         )}
       </div>
     </div>

@@ -276,6 +276,51 @@ export async function getRepartitionGeographique(): Promise<RepartitionVille[]> 
     .sort((a, b) => b.nbPrestataires - a.nbPrestataires);
 }
 
+export type VilleAdminCarte = {
+  id: string;
+  nom: string;
+  codeZone: string;
+  active: boolean;
+  nbPrestataires: number;
+  nbMissions: number;
+  tension: "equilibree" | "a_surveiller" | "tendue" | "tres_tendue";
+};
+
+function niveauTension(nbMissions: number, nbPrestataires: number): VilleAdminCarte["tension"] {
+  if (nbPrestataires === 0) return nbMissions > 0 ? "tres_tendue" : "equilibree";
+  const ratio = nbMissions / nbPrestataires;
+  if (ratio <= 0.5) return "equilibree";
+  if (ratio <= 1) return "a_surveiller";
+  if (ratio <= 2) return "tendue";
+  return "tres_tendue";
+}
+
+/** Villes gérées (§5.11) — configuration réelle (villes_admin, 0044) enrichie de l'offre/demande réelle par ville. */
+export async function getVillesAdmin(): Promise<VilleAdminCarte[]> {
+  const admin = createAdminClient();
+  const [{ data: villes }, offreDemande] = await Promise.all([
+    admin.from("villes_admin").select("*").order("nom", { ascending: true }),
+    getOffreDemandeParVille(),
+  ]);
+
+  const parNomMinuscule = new Map(offreDemande.map((v) => [v.ville.toLowerCase(), v]));
+
+  return (villes ?? []).map((v) => {
+    const donnees = parNomMinuscule.get(v.nom.toLowerCase());
+    const nbPrestataires = donnees?.nbPrestataires ?? 0;
+    const nbMissions = donnees?.nbMissions ?? 0;
+    return {
+      id: v.id,
+      nom: v.nom,
+      codeZone: v.code_zone,
+      active: v.active,
+      nbPrestataires,
+      nbMissions,
+      tension: niveauTension(nbMissions, nbPrestataires),
+    };
+  });
+}
+
 export type VilleOffreDemande = { ville: string; nbPrestataires: number; nbMissions: number };
 
 /**

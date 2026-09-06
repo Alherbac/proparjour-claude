@@ -26,7 +26,7 @@ function actionsPourMission(m: MissionAvecEquipe) {
   if (categorie === "terminee") {
     return [
       { label: "Facture", href: `/api/factures/${m.id}`, variant: "secondaire" as const },
-      { label: "Reproposer", href: `/tableau-de-bord/missions/${m.id}/refaire`, variant: "secondaire" as const },
+      { label: "Reproposer", href: `/client/missions/${m.id}/refaire`, variant: "secondaire" as const },
     ];
   }
   return [{ label: "Détail", href: `/missions/${m.id}`, variant: "secondaire" as const }];

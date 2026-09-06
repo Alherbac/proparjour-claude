@@ -24,16 +24,21 @@ export async function Header() {
   } = await supabase.auth.getUser();
   const notifications = user ? await getNotifications() : [];
   const profil = user
-    ? (await supabase.from("users").select("prenom, nom").eq("id", user.id).maybeSingle()).data
+    ? (await supabase.from("users").select("prenom, nom, type").eq("id", user.id).maybeSingle()).data
     : null;
   const initiales =
     ((profil?.prenom?.[0] ?? "") + (profil?.nom?.[0] ?? "")).toUpperCase() ||
     (user?.email ? user.email.slice(0, 2).toUpperCase() : "?");
+  // Un prestataire connecté qui atterrit sur une page marketing (ex.
+  // /prestataires) revient à son propre espace via le logo, jamais à
+  // la landing client.
+  const espaceHref = profil?.type === "prestataire" ? "/prestataire" : profil?.type === "admin" ? "/admin" : "/client";
+  const logoHref = profil?.type === "prestataire" ? "/prestataire" : "/";
 
   return (
     <HeaderShell>
       <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-2 px-6 py-3.5 max-[400px]:px-4">
-        <MarketingLogo className="max-[360px]:text-[18px]" />
+        <MarketingLogo className="max-[360px]:text-[18px]" href={logoHref} />
 
         <nav className="flex items-center gap-9 max-[900px]:hidden">
           {NAV_LINKS.map((link) => (
@@ -54,15 +59,15 @@ export async function Header() {
           <PanierIndicator />
           {user ? (
             <>
-              <NotificationBell userId={user.id} notificationsInitiales={notifications} />
+              <NotificationBell userId={user.id} notificationsInitiales={notifications} voirToutHref={`${espaceHref}/notifications`} />
               <Link
-                href="/tableau-de-bord"
+                href={espaceHref}
                 className="hidden text-[14.5px] font-medium text-ppj-text-2 transition-colors hover:text-ppj-ink max-[900px]:hidden sm:block"
               >
-                Mes missions
+                Vos missions
               </Link>
               <Link
-                href="/tableau-de-bord"
+                href={espaceHref}
                 className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-ppj-ink text-[13px] font-semibold text-white"
                 aria-label="Mon compte"
               >

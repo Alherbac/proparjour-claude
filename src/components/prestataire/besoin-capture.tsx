@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Search, MapPin, CalendarDays, Clock, ArrowRight, ArrowLeft, Send, Plus, X, Minus, Check, AlertCircle } from "lucide-react";
+import { Search, ArrowRight, ArrowLeft, Send, Plus, X, MapPin, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VilleAutocompleteIdf } from "@/components/ville-autocomplete-idf";
 import { createClient } from "@/lib/supabase/client";
@@ -42,35 +43,14 @@ type Chip = {
   // Jamais extrait du texte — le tarif n'est fiable que saisi par le
   // client ; c'est la seule information "manquante" quasi certaine.
   tarifHoraire: number | null;
-  // Lot B — résolus une fois à la détection (contexte : local au
-  // segment ou repli sur le contexte "de tête" de toute la demande ;
-  // contraintes : strictement locales, jamais de repli — voir
-  // lib/besoin.ts, SousBesoin). Librement modifiables/supprimables
-  // ensuite dans la carte, comme n'importe quel autre champ du chip.
   contexte: ContexteDetecte | null;
   contraintes: ContrainteDetectee[];
-  // Lot C — date/heureDebut/heureFin ci-dessus restent préremplis
-  // normalement (jamais bloquant, cahier §11) ; ambiguites porte les
-  // confirmations "certain mais pas garanti" encore en attente pour
-  // CETTE carte (rejetée = null-e, confirmée = simplement retirée de
-  // la liste). quantiteIncertaine : la quantité affichée est un repli
-  // (1) le temps que le client confirme un vrai chiffre, jamais un
-  // choix arbitraire présenté comme sûr (cahier §4).
   ambiguites: Ambiguite[];
   quantiteIncertaine: boolean;
-  // Lot D §7 — plusieurs jours cités explicitement pour ce métier
-  // ("lundi, mardi et mercredi") : strictement informatif, jamais
-  // publié comme une série (le système de missions récurrentes reste
-  // séparé) — `date` ci-dessus reste la seule valeur réellement utilisée.
   datesMultiples: string[] | null;
 };
 
-/** Ce que le matching (Bloc 3) vérifiera réellement pour chaque famille — les mêmes 6 critères partout, seule la mise en avant change. */
-const CE_QUI_SERA_VERIFIE: Record<MetierId, string> = {
-  securite: "Disponibilité, zone d'intervention, vérification CNAPS",
-  accueil: "Disponibilité, expérience accueil, présentation",
-  vente: "Disponibilité, expérience commerciale, zone",
-};
+type Onglet = "commun" | MetierId;
 
 const LABEL_MOMENT: Record<MomentJournee, string> = {
   matin: "Matin",
@@ -156,7 +136,7 @@ function chipsDepuisDemandeSauvee(): Chip[] | null {
   );
 }
 
-/** Reprend un besoin mono-métier sauvegardé — null si aucun. */
+/** Reprend un besoin mono-métier sauvegardé — null si aucune. */
 function chipsDepuisBesoinSauve(): Chip[] | null {
   const besoin = lireBesoin();
   if (!besoin?.metier) return null;
@@ -168,6 +148,7 @@ function chipsDepuisBesoinSauve(): Chip[] | null {
       heureFin: besoin.heureFin,
       date: besoin.date,
       ville: besoin.ville,
+      tarifHoraire: besoin.tarifHoraire ?? null,
       contexte: besoin.contexte ?? null,
       contraintes: besoin.contraintes ?? [],
     }),
@@ -175,22 +156,38 @@ function chipsDepuisBesoinSauve(): Chip[] | null {
 }
 
 /**
- * Capture en langage naturel pour le parcours "Publier un besoin" —
- * distinct de RechercheBar (parcours "Trouver un professionnel") :
- * ici on décrit un besoin qui devient une ou plusieurs offres
- * publiées, on ne consulte pas un catalogue. Fonctionne comme un
- * assistant en une page : détection → vérification des critères →
- * complément des informations manquantes → publication directe ou
- * consultation des profils — jamais de redirection vers un formulaire
- * vierge qui referait saisir ce que le texte a déjà donné.
+ * Écran "Publier une offre" (parcours B, route dédiée /publier-une-offre
+ * — jamais partagée avec /prestataires) — distinct et strictement
+ * séparé de RechercheBar (parcours A "Rechercher un professionnel").
+ * Le client ne choisit jamais personne et ne voit jamais de vignette
+ * de prestataire (README §8/§11, ÉCLAIRCISSEMENT-DEUX-PARCOURS.txt).
+ *
+ * Étape "détails" alignée sur la même grammaire que "Proposer la
+ * mission" (README §11, captures du dossier "Proparjour design a
+ * jour") : métiers en onglets, bloc "Commun à toute l'offre" saisi une
+ * seule fois, colonne de droite "Votre offre" / "Avant de publier" /
+ * "Ce qui se passe ensuite" / actions. Toute la logique de détection,
+ * d'édition et de publication ci-dessous est inchangée — seule la
+ * mise en forme change.
  */
 export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   const router = useRouter();
+  // Priorité : un brouillon déjà en cours (localStorage, lib/besoin.ts)
+  // gagne TOUJOURS sur `texteInitial` (le paramètre ?q= de l'URL) — pas
+  // seulement en l'absence de `texteInitial`. Sans cette priorité, une
+  // simple actualisation de page en cours de saisie — l'URL ?q=... ne
+  // change jamais pendant l'édition — ré-extrayait la phrase d'origine
+  // à chaque fois et effaçait toute modification manuelle (titre,
+  // adresse, tarifs...) déjà auto-sauvegardée. Le TTL d'une heure
+  // (DUREE_VIE_BROUILLON_MS) borne déjà le risque qu'un très ancien
+  // brouillon abandonné revienne masquer une nouvelle phrase.
+  const chipsSauveesInitiales = chipsDepuisDemandeSauvee() ?? chipsDepuisBesoinSauve();
   const [texte, setTexte] = useState(() => {
-    if (texteInitial) return texteInitial;
-    return lireDemande()?.texteOriginal ?? lireBesoin()?.texte ?? "";
+    if (chipsSauveesInitiales) return lireDemande()?.texteOriginal ?? lireBesoin()?.texte ?? texteInitial ?? "";
+    return texteInitial ?? "";
   });
   const [chips, setChips] = useState<Chip[]>(() => {
+    if (chipsSauveesInitiales) return chipsSauveesInitiales;
     if (texteInitial) {
       const decomposition = extraireSousBesoins(texteInitial);
       if (decomposition.length > 0) return decomposition.map((d) => creerChip(d));
@@ -212,22 +209,25 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
           ]
         : [];
     }
-    // Pas de texte dans l'URL : reprise d'un brouillon (ex. retour après connexion pour publier).
-    return chipsDepuisDemandeSauvee() ?? chipsDepuisBesoinSauve() ?? [];
+    return [];
   });
   // Deux écrans distincts, jamais tout empilé sur une seule page qui
   // défile : la barre de saisie d'abord, puis — seulement après un
-  // "Continuer" explicite — l'écran "Vérifiez vos critères" avec les
-  // cartes, les prérequis et les informations manquantes (comme Malt).
-  // Un texte déjà fourni (lien depuis le hero) ou un brouillon repris
-  // après connexion sautent directement au second écran.
+  // "Continuer" explicite — l'écran "Publier une offre" avec ses
+  // onglets. Un brouillon repris (refresh, retour post-connexion) ou
+  // un texte déjà fourni (lien depuis le hero) sautent directement au
+  // second écran.
   const [etape, setEtape] = useState<"saisie" | "details">(() => {
-    if (texteInitial) return "details";
-    return (chipsDepuisDemandeSauvee() ?? chipsDepuisBesoinSauve() ?? []).length > 0 ? "details" : "saisie";
+    if (chipsSauveesInitiales && chipsSauveesInitiales.length > 0) return "details";
+    return texteInitial ? "details" : "saisie";
   });
   const [supprimes, setSupprimes] = useState<Set<MetierId>>(new Set());
-  const demandeSauvee = texteInitial ? null : lireDemande();
-  const [ville, setVille] = useState<string | null>(demandeSauvee?.ville || null);
+  const demandeSauvee = chipsSauveesInitiales ? lireDemande() : null;
+  // "|| chips[0]?.ville" comble le cas mono-métier : BesoinEnCours (la
+  // sauvegarde d'un seul métier, lib/besoin.ts) n'a pas de champ
+  // "ville" de demande séparé — la ville vit uniquement sur le chip
+  // restauré, déjà présente dans `chips` à ce stade.
+  const [ville, setVille] = useState<string | null>(demandeSauvee?.ville || chips[0]?.ville || null);
   // Lot C §1 — ville devinée seulement par une préposition ("... à
   // Paris", sans code postal) : reste préremplie (voir analyser, plus
   // bas) mais accompagnée de cette confirmation globale tant qu'elle
@@ -238,31 +238,31 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   const [heureDebut, setHeureDebut] = useState<string | null>(demandeSauvee?.heureDebut || null);
   const [heureFin, setHeureFin] = useState<string | null>(demandeSauvee?.heureFin || null);
   const [adresseTexte, setAdresseTexte] = useState<string | null>(null);
-  const [ajoutOuvert, setAjoutOuvert] = useState(false);
-  const [titre, setTitre] = useState(demandeSauvee?.titre ?? "");
+  // "?? lireBesoin()?.titre" comble le cas mono-métier (demandeSauvee
+  // vient de lireDemande(), toujours null hors du cas multi).
+  const [titre, setTitre] = useState(demandeSauvee?.titre ?? (chipsSauveesInitiales ? lireBesoin()?.titre : undefined) ?? "");
   const [prerequis, setPrerequis] = useState<string[]>([]);
   // null = message auto-composé (texte + prérequis + adresse) affiché
   // tel quel ; une valeur = le client l'a personnalisé à la main et
   // celle-ci prévaut jusqu'à un retour explicite à la version générée.
   const [messagePersonnalise, setMessagePersonnalise] = useState<string | null>(null);
-  const [envoiRecherche, setEnvoiRecherche] = useState(false);
   const [envoiPublication, setEnvoiPublication] = useState(false);
   const [erreurPublication, setErreurPublication] = useState<string | null>(null);
+  const [onglet, setOnglet] = useState<Onglet>("commun");
   const zoneSaisieRef = useRef<HTMLTextAreaElement>(null);
 
   const modeMulti = chips.length >= 2;
   const chipUnique = chips.length === 1 ? chips[0] : null;
+  const ongletActif: Onglet = modeMulti ? onglet : (chips[0]?.metier ?? "commun");
   const dateApercu = date ?? chips.find((c) => c.date)?.date ?? null;
   const titreParDefaut = dateApercu ? `Événement du ${formatDateFr(dateApercu)}` : "Ma demande";
 
-  // Une carte "prête pour la recherche" a un horaire et un lieu résolus
-  // (propres ou hérités des valeurs globales de la demande) — jamais une
-  // valeur par défaut inventée. La date, elle, n'est PAS bloquante pour
-  // la recherche : si elle manque, elle vaut implicitement "Je ne sais
-  // pas encore" (le client parcourt les profils sans filtre de date).
-  // "Prête pour la publication" est plus stricte : exige une vraie date
-  // (offres.date_mission est NOT NULL) et un tarif — les deux seules
-  // informations qu'un "Je ne sais pas encore" ne peut jamais remplacer.
+  // "Prête pour la publication" exige une vraie date (offres.date_mission
+  // est NOT NULL), un lieu, un horaire et un tarif — ce dernier n'est
+  // jamais extrait du texte, c'est la seule information que le client
+  // doit obligatoirement saisir lui-même (règle de parcours B : une
+  // offre publiée sans rémunération fait candidater les professionnels
+  // à l'aveugle).
   function champsResolus(c: Chip) {
     return {
       date: c.date ?? date,
@@ -271,22 +271,33 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       ville: c.ville ?? ville,
     };
   }
-  function carteResoluePourRecherche(c: Chip): boolean {
-    const r = champsResolus(c);
-    return Boolean(r.heureDebut && r.heureFin && r.ville);
-  }
   function carteResoluePourPublication(c: Chip): boolean {
     const r = champsResolus(c);
     return Boolean(r.date && r.heureDebut && r.heureFin && r.ville && c.tarifHoraire && c.tarifHoraire > 0);
   }
-  const pretPourRecherche = chips.length > 0 && chips.every(carteResoluePourRecherche);
+  const communComplet = titre.trim().length > 0 && Boolean(date) && Boolean(ville);
   const pretPourPublication = chips.length > 0 && chips.every(carteResoluePourPublication);
   // Toute carte à laquelle il manque quoi que ce soit (lieu/horaire —
   // bloquants pour tout — ou date/tarif — bloquants seulement pour
   // publier) apparaît dans le même panneau rouge unique, jamais éclatée
   // entre un panneau structuré et une phrase générique selon ce qui manque.
   const cartesIncompletes = chips.filter((c) => !carteResoluePourPublication(c));
-  const totalProfessionnels = chips.reduce((somme, c) => somme + c.quantite, 0);
+  const totalPostes = chips.reduce((somme, c) => somme + c.quantite, 0);
+
+  // "Avant de publier" — même grammaire que "Proposer la mission" :
+  // une ligne cliquable par élément manquant, "commun" ou nom court du
+  // métier, qui bascule directement sur l'onglet concerné.
+  const manques: { label: string; scope: string; onglet: Onglet }[] = [];
+  if (!titre.trim()) manques.push({ label: "Titre de l'offre", scope: "commun", onglet: "commun" });
+  if (!date) manques.push({ label: "Date de l'offre", scope: "commun", onglet: "commun" });
+  if (!ville) manques.push({ label: "Adresse exacte", scope: "commun", onglet: "commun" });
+  for (const c of chips) {
+    const info = infosFamille(c.metier);
+    const court = METIERS.find((m) => m.id === c.metier)?.filiere.split(" ")[0].replace("&", "").trim() || info.filiere;
+    const r = champsResolus(c);
+    if (!(r.heureDebut && r.heureFin)) manques.push({ label: "Horaires du poste", scope: court, onglet: c.metier });
+    if (!(c.tarifHoraire && c.tarifHoraire > 0)) manques.push({ label: "Rémunération", scope: court, onglet: c.metier });
+  }
 
   function analyser(nouveauTexte: string) {
     setTexte(nouveauTexte);
@@ -372,6 +383,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   function retirerChip(metier: MetierId) {
     setChips((prev) => prev.filter((c) => c.metier !== metier));
     setSupprimes((prev) => new Set(prev).add(metier));
+    if (onglet === metier) setOnglet("commun");
   }
 
   function ajusterQuantite(metier: MetierId, delta: number) {
@@ -400,10 +412,6 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   /**
    * Lot C — "Modifier" : on efface la proposition (jamais gardée "au
    * cas où") et le client retape via l'éditeur habituel de la carte.
-   * Le repli global (`date`/`heureDebut`/`heureFin`, préempli une
-   * seule fois à la frappe — voir analyser()) est aussi réinitialisé :
-   * sinon la carte réafficherait aussitôt la même valeur rejetée via
-   * champsResolus(), qui retombe dessus dès que le champ du chip est vide.
    */
   function modifierAmbiguite(metier: MetierId, champ: Ambiguite["champ"]) {
     setChips((prev) =>
@@ -437,8 +445,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       next.delete(metier);
       return next;
     });
-    setAjoutOuvert(false);
-    zoneSaisieRef.current?.focus();
+    setOnglet(metier);
   }
 
   function ajouterPrerequis(suggestion?: string) {
@@ -465,9 +472,9 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   /**
    * Lot B — bloc "Contexte" / "Contraintes" propre à UN chip, ajouté à
    * la description de SON offre au moment de la publication (jamais
-   * dans messageFinal()/la zone "Votre message", commune à toute la
-   * demande en mode multi — ce serait précisément le mélange entre
-   * métiers que le cahier interdit, §4/§8).
+   * dans messageFinal()/"Contexte", commun à toute la demande en mode
+   * multi — ce serait précisément le mélange entre métiers que le
+   * cahier interdit, §4/§8).
    */
   function blocContexteContraintes(chip: Chip): string {
     const lignes: string[] = [];
@@ -515,10 +522,33 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
         date: r.date,
         heureDebut: r.heureDebut,
         heureFin: r.heureFin,
+        tarifHoraire: chipUnique.tarifHoraire,
+        titre: titre.trim() || undefined,
         contexte: chipUnique.contexte,
         contraintes: chipUnique.contraintes,
       });
     }
+  }
+
+  // Sauvegarde automatique et discrète du brouillon, réutilisant tel
+  // quel sauvegarderPourReprise (jamais un second système de
+  // brouillon) : sans elle, une simple actualisation de page en cours
+  // de saisie perdait toute modification manuelle (titre, adresse,
+  // tarifs...) — seule la phrase d'origine, ré-extraite depuis l'URL,
+  // survivait. Légèrement débattue pour ne pas écrire à chaque frappe.
+  useEffect(() => {
+    if (etape !== "details" || chips.length === 0) return;
+    const id = setTimeout(() => sauvegarderPourReprise(), 600);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sauvegarderPourReprise lit déjà tout l'état pertinent (chips, titre, date, ville...) via fermeture ; le lister en plus de ces dépendances redéclencherait l'effet en boucle sans rien y ajouter.
+  }, [etape, chips, titre, date, ville, heureDebut, heureFin, texte, prerequis, messagePersonnalise]);
+
+  /** Bouton "Enregistrer le brouillon" — même sauvegarde que celle déjà
+   * déclenchée silencieusement avant un renvoi vers /connexion, mais ici
+   * appelée explicitement par le client, sans navigation. */
+  function enregistrerBrouillon() {
+    sauvegarderPourReprise();
+    toast.success("Brouillon enregistré sur cet appareil.");
   }
 
   async function estConnecte(): Promise<boolean> {
@@ -529,93 +559,10 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
     return Boolean(user);
   }
 
-  async function voirLesProfils() {
-    if (!pretPourRecherche) return;
-    setEnvoiRecherche(true);
-    if (modeMulti) {
-      // Le repli global (pastilles "par défaut") a été retiré — chaque
-      // carte résout maintenant sa propre ville/date directement dans
-      // le panneau rouge. La page de résultats, elle, n'a qu'une seule
-      // ville/date de recherche pour l'ensemble des sous-besoins ;  on
-      // dérive donc ces deux paramètres de la première carte résolue
-      // plutôt que de renvoyer un état global qui n'est plus jamais
-      // renseigné par aucune UI.
-      const premiereCarteResolue = champsResolus(chips[0]);
-      const villeRecherche = ville ?? premiereCarteResolue.ville ?? "";
-      const dateRecherche = date ?? premiereCarteResolue.date ?? "";
-      sauvegarderDemande({
-        titre: (titre || titreParDefaut).trim(),
-        texteOriginal: texte,
-        ville: villeRecherche,
-        date: dateRecherche,
-        heureDebut: heureDebut ?? "",
-        heureFin: heureFin ?? "",
-        sousBesoins: chips.map((c) => {
-          const r = champsResolus(c);
-          return {
-            metier: c.metier,
-            quantite: c.quantite,
-            tarifHoraire: c.tarifHoraire,
-            ville: r.ville!,
-            date: r.date ?? "",
-            heureDebut: r.heureDebut!,
-            heureFin: r.heureFin!,
-          };
-        }),
-      });
-      const params = new URLSearchParams({
-        besoin: "1",
-        multi: "1",
-        ville: villeRecherche,
-        date: dateRecherche,
-        sousBesoins: JSON.stringify(
-          chips.map((c) => {
-            const r = champsResolus(c);
-            return {
-              metier: c.metier,
-              quantite: c.quantite,
-              ville: r.ville,
-              date: r.date,
-              heureDebut: r.heureDebut,
-              heureFin: r.heureFin,
-              // Lot F — transmis pour que le matching de la page de
-              // résultats exploite les mêmes contraintes/contexte que
-              // ceux vérifiés par le client sur cette carte, jamais
-              // perdus entre la capture du besoin et la recherche.
-              contraintes: c.contraintes,
-              contexte: c.contexte?.label ?? null,
-            };
-          }),
-        ),
-      });
-      router.push(`/prestataires?${params.toString()}`);
-    } else if (chipUnique) {
-      const r = champsResolus(chipUnique);
-      if (!r.ville) {
-        setEnvoiRecherche(false);
-        return;
-      }
-      sauvegarderBesoin({
-        texte,
-        metier: chipUnique.metier,
-        ville: r.ville,
-        quantite: chipUnique.quantite,
-        date: r.date,
-        heureDebut: r.heureDebut,
-        heureFin: r.heureFin,
-      });
-      const params = new URLSearchParams({ besoin: "1", metier: chipUnique.metier, ville: r.ville });
-      if (r.date) params.set("date", r.date);
-      if (r.heureDebut) params.set("heureDebut", r.heureDebut);
-      if (r.heureFin) params.set("heureFin", r.heureFin);
-      if (chipUnique.quantite > 1) params.set("quantite", String(chipUnique.quantite));
-      // Lot F — mêmes contraintes/contexte que ceux vérifiés sur la
-      // carte, transmis pour que le matching en tienne compte.
-      if (chipUnique.contraintes.length > 0) params.set("contraintes", JSON.stringify(chipUnique.contraintes));
-      if (chipUnique.contexte) params.set("contexte", chipUnique.contexte.label);
-      router.push(`/prestataires?${params.toString()}`);
-    }
-  }
+  // Pas de "voir les professionnels" ici — règle de parcours B : le
+  // client ne choisit personne à ce stade (README §8/§11, ÉCLAIRCISSEMENT-
+  // DEUX-PARCOURS.txt). Chercher/choisir soi-même est l'onglet "Rechercher
+  // un professionnel" de la landing, un parcours entièrement séparé.
 
   /**
    * Publication directe : appelle l'action de publication tout de
@@ -634,7 +581,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
     const connecte = await estConnecte();
     if (!connecte) {
       sauvegarderPourReprise();
-      router.push(`/connexion?next=${encodeURIComponent("/prestataires?mode=publier")}`);
+      router.push(`/connexion?next=${encodeURIComponent("/publier-une-offre")}`);
       return;
     }
 
@@ -691,37 +638,32 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       toast.success("Votre offre a été publiée et les prestataires correspondants ont été notifiés.");
     }
 
-    router.push("/tableau-de-bord/mes-offres");
+    router.push("/client/candidatures");
   }
 
   const metiersDisponiblesAjout = METIERS.filter((m) => !chips.some((c) => c.metier === m.id));
   const ambigu = texte.trim().length > 0 && chips.length === 0;
 
-  /**
-   * Lot E §3 — résumé en une phrase de ce qui a été compris, affiché
-   * en tête de l'écran de vérification ("Pour vendredi soir à Paris —
-   * 3 professionnels · 2 métiers"). Purement de la mise en forme :
-   * aucune nouvelle détection, seulement les mêmes champs déjà résolus
-   * par champsResolus() pour chaque carte. N'affirme une date/ville
-   * commune que si elle l'est réellement pour toutes les cartes —
-   * jamais une généralisation à partir d'une seule d'entre elles.
-   */
-  function syntheseNaturelle(): string {
-    const premiere = champsResolus(chips[0]);
-    const datesUniques = new Set(chips.map((c) => champsResolus(c).date));
-    const villesUniques = new Set(chips.map((c) => champsResolus(c).ville));
-    const dateTexte = datesUniques.size === 1 && premiere.date ? formatDateFr(premiere.date) : null;
-    const villeTexte = villesUniques.size === 1 && premiere.ville ? `à ${premiere.ville}` : null;
-    const lieuDate = [dateTexte, villeTexte].filter(Boolean).join(" ");
-    const metierTexte = chips.length === 1 ? "1 métier" : `${chips.length} métiers`;
-    const proTexte = `${totalProfessionnels} professionnel${totalProfessionnels > 1 ? "s" : ""}`;
-    return [lieuDate ? `Pour ${lieuDate}` : null, `${proTexte} · ${metierTexte}`].filter(Boolean).join(" — ");
-  }
-
   return (
     <div>
       {etape === "saisie" && (
         <>
+          <div className="mx-auto mb-6 max-w-2xl text-center">
+            <p className="mb-2 font-mono text-[12px] font-semibold uppercase tracking-[0.12em] text-primary">
+              Parcours « Publier mon besoin »
+            </p>
+            <h1
+              className="text-ppj-ink"
+              style={{ fontFamily: "var(--font-display-serif)", fontSize: "clamp(30px,3.4vw,44px)", lineHeight: 1.05, letterSpacing: "-0.02em" }}
+            >
+              Publier une offre
+            </h1>
+            <p className="mt-2.5 text-[15.5px] text-ppj-text-3">
+              Vous ne choisissez personne à ce stade : vous décrivez le besoin, et les professionnels se portent
+              candidats un par un. Aucun panier dans ce parcours.
+            </p>
+          </div>
+
           {/* Zone de saisie — le cœur visuel du parcours */}
           <div
             className="mx-auto max-w-2xl rounded-[22px] border border-ppj-line bg-white p-2 transition-[border-color] focus-within:border-primary"
@@ -760,7 +702,9 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
             </div>
           )}
 
-          {/* Aperçu compact des métiers détectés — le détail complet (cartes, prérequis, informations manquantes) n'apparaît qu'après "Continuer", sur son propre écran, jamais empilé sous la barre. */}
+          {/* Aperçu compact des métiers détectés — le détail complet
+              (onglets, cartes, informations manquantes) n'apparaît
+              qu'après "Continuer", sur son propre écran. */}
           {chips.length > 0 && (
             <div className="mt-6 flex flex-col items-center gap-3">
               <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-ppj-ink">
@@ -790,335 +734,354 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       )}
 
       {etape === "details" && chips.length > 0 && (
-        <div className="mx-auto mt-2 max-w-2xl">
+        <div className="mx-auto max-w-[1180px]">
           <button
             type="button"
             onClick={() => setEtape("saisie")}
-            className="mb-5 inline-flex items-center gap-1.5 text-sm text-ppj-text-3 transition-colors hover:text-primary"
+            className="mb-2.5 inline-flex items-center gap-1.5 text-[13px] text-ppj-text-3 transition-colors hover:text-ppj-ink"
           >
             <ArrowLeft className="size-3.5" />
             Revenir à votre phrase
           </button>
-
-          {/* Lot E §3 — la confiance se construit ici : le client doit
-              comprendre en un regard ce que ProParJour a compris, avant
-              même de lire le détail des cartes. Jamais de jargon
-              ("analyse", "extraction") — juste ce qui a été compris,
-              en français courant. */}
-          <p className="font-mono text-[11px] uppercase tracking-[.14em] text-primary">Voici ce que nous avons compris</p>
-          <p
-            className="mt-2 text-ppj-ink"
-            style={{ fontFamily: "var(--font-display-serif)", fontSize: "clamp(26px,4vw,32px)", lineHeight: 1.15, letterSpacing: "-0.01em", textWrap: "balance" }}
+          <h1
+            className="text-ppj-ink"
+            style={{ fontFamily: "var(--font-display-serif)", fontSize: "26px", lineHeight: 1.1, letterSpacing: "-0.018em" }}
           >
-            {syntheseNaturelle()}
+            Publier une offre
+          </h1>
+          <p className="mb-5 mt-1.5 max-w-[62ch] text-[15px] text-ppj-text-3">
+            Vous ne choisissez personne — les professionnels candidatent un par un.
           </p>
 
-          {/* Intitulé — toujours visible, préempli, éditable */}
-          <div className="mt-6 max-w-md">
-            <label htmlFor="besoin-titre" className="text-xs font-medium text-ppj-text-3">
-              Titre de la demande
-            </label>
-            <input
-              id="besoin-titre"
-              type="text"
-              value={titre}
-              onChange={(e) => setTitre(e.target.value)}
-              placeholder={titreParDefaut}
-              className="mt-1.5 w-full rounded-[14px] border border-ppj-line-field bg-ppj-field px-4 py-2.5 text-sm text-ppj-ink outline-none focus:border-primary"
-            />
-          </div>
-
-          {/* Lot C §1 — ville devinée seulement par une préposition ("à
-              Paris", sans code postal) : déjà préremplie dans les cartes
-              ci-dessous (jamais bloquant), mais confirmée ici en un geste
-              plutôt qu'appliquée en silence comme une certitude. */}
-          {ambiguiteVille && (
-            <div className="mt-4 max-w-md rounded-[16px] border border-ppj-line bg-ppj-fill px-4 py-3.5">
-              <p className="flex items-start gap-2 text-[13px] leading-relaxed text-ppj-ink">
-                <MapPin className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                <span>
-                  Nous pensons que c&apos;est à <strong className="font-semibold">{ambiguiteVille.ville}</strong>. C&apos;est bien ça&nbsp;?
-                </span>
-              </p>
-              <div className="mt-2.5 flex flex-wrap items-center gap-3 pl-[22px]">
+          {/* Onglets — un par métier retenu, "+ Ajouter un métier" dans
+              le même groupe. N'apparaissent qu'à partir de deux métiers
+              (README §11) : avec un seul, tout tient dans un panneau. */}
+          {modeMulti && (
+            <div role="tablist" className="mb-3 flex flex-wrap gap-1.5">
+              <OngletBouton actif={ongletActif === "commun"} complet={communComplet} onClick={() => setOnglet("commun")} label="Commun à tous" />
+              {chips.map((c) => {
+                const court = METIERS.find((m) => m.id === c.metier)?.filiere.split(" ")[0].replace("&", "").trim() || c.metier;
+                return (
+                  <OngletBouton
+                    key={c.metier}
+                    actif={ongletActif === c.metier}
+                    complet={carteResoluePourPublication(c)}
+                    onClick={() => setOnglet(c.metier)}
+                    label={`${court} ${c.quantite} poste${c.quantite > 1 ? "s" : ""}`}
+                  />
+                );
+              })}
+              {metiersDisponiblesAjout.map((m) => (
                 <button
+                  key={m.id}
                   type="button"
-                  onClick={() => setAmbiguiteVille(null)}
-                  className="rounded-full bg-ppj-ink px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary"
+                  onClick={() => ajouterChip(m.id)}
+                  className="flex min-h-11 items-center gap-1.5 rounded-[11px] border border-dashed border-ppj-line-button px-3 text-[13px] font-medium text-ppj-text-3 transition-colors hover:border-ppj-ink hover:text-ppj-ink"
                 >
-                  Oui, {ambiguiteVille.ville}
+                  <Plus className="size-3.5" />
+                  {infosFamille(m.id).emoji} {m.filiere}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVille(null);
-                    setAmbiguiteVille(null);
-                  }}
-                  className="text-xs font-medium text-ppj-text-3 underline underline-offset-2 hover:text-ppj-ink"
-                >
-                  Modifier
-                </button>
-              </div>
+              ))}
             </div>
           )}
 
-          <div className="mt-4 space-y-3">
-            {chips.map((chip) => (
-              <CarteEquipe
-                key={chip.metier}
-                chip={chip}
-                valeursGlobales={{ date, heureDebut, heureFin, ville }}
-                onRetirer={() => retirerChip(chip.metier)}
-                onAjusterQuantite={(delta) => ajusterQuantite(chip.metier, delta)}
-                onModifier={(patch) => mettreAJourChip(chip.metier, patch)}
-                onRetirerContrainte={(contrainte) => retirerContrainte(chip.metier, contrainte)}
-                onConfirmerAmbiguite={(champ) => confirmerAmbiguite(chip.metier, champ)}
-                onModifierAmbiguite={(champ) => modifierAmbiguite(chip.metier, champ)}
-                onConfirmerQuantite={() => confirmerQuantite(chip.metier)}
-              />
-            ))}
-            {metiersDisponiblesAjout.length > 0 && (
-              <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-                {ajoutOuvert ? (
-                  metiersDisponiblesAjout.map((m) => (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+            {/* Colonne gauche — panneau de saisie */}
+            <div className="min-w-0 rounded-[18px] border border-ppj-line bg-white p-5">
+              {(!modeMulti || ongletActif === "commun") && (
+                <div className={cn(modeMulti ? "" : "mb-5 border-b border-ppj-line-2 pb-5")}>
+                  <p className="mb-1 text-[15px] font-semibold text-ppj-ink">Commun à toute l&apos;offre</p>
+                  <p className="mb-3.5 text-[12px] text-ppj-text-3">
+                    Saisi une seule fois — les horaires et la rémunération se règlent dans chaque onglet métier.
+                  </p>
+                  <div className="grid gap-[13px]">
+                    <ChampCommun label="Date de l'offre" manquant={!date}>
+                      <EditeurDate value={date} onChange={setDate} onValider={() => {}} nomGroupe="date-commune" compact />
+                    </ChampCommun>
+                    <div>
+                      <ChampCommun label="Adresse exacte" manquant={!ville}>
+                        <VilleAutocompleteIdf value={ville ?? ""} onChange={setVille} className={cn(!ville && "[&_input]:border-primary [&_input]:border-[1.5px]")} />
+                      </ChampCommun>
+                      {ambiguiteVille && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-ppj-fill px-3 py-2.5 text-[12.5px] text-ppj-ink">
+                          <MapPin className="size-3.5 shrink-0 text-primary" />
+                          <span>
+                            Nous pensons que c&apos;est à <strong className="font-semibold">{ambiguiteVille.ville}</strong>.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setAmbiguiteVille(null)}
+                            className="font-semibold text-primary underline underline-offset-2"
+                          >
+                            Confirmer
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <ChampCommun label="Titre de l'offre">
+                      <input
+                        value={titre}
+                        onChange={(e) => setTitre(e.target.value)}
+                        placeholder={titreParDefaut}
+                        className={champInputClass}
+                      />
+                    </ChampCommun>
+                    <ChampCommun label="Contexte" hint="vu par tous les candidats">
+                      <textarea
+                        value={messageFinal()}
+                        onChange={(e) => setMessagePersonnalise(e.target.value)}
+                        rows={3}
+                        placeholder="Type de lieu, affluence attendue, contact sur place, accès et étage…"
+                        className={cn(champInputClass, "resize-none leading-[1.5]")}
+                      />
+                    </ChampCommun>
+
+                    <div>
+                      <p className="mb-1.5 text-[12.5px] font-semibold text-ppj-ink">Prérequis supplémentaires</p>
+                      <div className="grid gap-1.5">
+                        {prerequis.map((p, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={p}
+                              onChange={(e) => modifierPrerequis(i, e.target.value)}
+                              placeholder={SUGGESTIONS_PREREQUIS[i % SUGGESTIONS_PREREQUIS.length]}
+                              className="w-full rounded-[13px] border border-ppj-line-field bg-ppj-field px-3.5 py-2.5 text-[13.5px] text-ppj-ink outline-none focus:border-primary"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => retirerPrerequis(i)}
+                              aria-label="Retirer ce prérequis"
+                              className="shrink-0 text-ppj-text-3 hover:text-primary"
+                            >
+                              <X className="size-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => ajouterPrerequis()}
+                          className="inline-flex min-h-11 w-fit items-center gap-1 text-[13px] text-ppj-text-3 underline underline-offset-2 hover:text-ppj-ink"
+                        >
+                          <Plus className="size-3.5" />
+                          Ajouter un prérequis
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {chips.map((chip) => {
+                if (modeMulti && ongletActif !== chip.metier) return null;
+                return (
+                  <PanneauMetier
+                    key={chip.metier}
+                    chip={chip}
+                    onRetirer={() => retirerChip(chip.metier)}
+                    onAjusterQuantite={(delta) => ajusterQuantite(chip.metier, delta)}
+                    onModifier={(patch) => mettreAJourChip(chip.metier, patch)}
+                    onRetirerContrainte={(contrainte) => retirerContrainte(chip.metier, contrainte)}
+                    onConfirmerAmbiguite={(champ) => confirmerAmbiguite(chip.metier, champ)}
+                    onModifierAmbiguite={(champ) => modifierAmbiguite(chip.metier, champ)}
+                    onConfirmerQuantite={() => confirmerQuantite(chip.metier)}
+                  />
+                );
+              })}
+
+              {!modeMulti && metiersDisponiblesAjout.length > 0 && (
+                <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-ppj-line-2 pt-4">
+                  {metiersDisponiblesAjout.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => ajouterChip(m.id)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-ppj-line bg-white px-3 py-1 text-sm text-ppj-ink hover:border-primary"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-ppj-line bg-white px-3 py-1.5 text-[13px] text-ppj-ink hover:border-primary"
                     >
+                      <Plus className="size-3.5" />
                       {infosFamille(m.id).emoji} {m.filiere}
                     </button>
-                  ))
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Colonne droite — récapitulatif de l'offre et publication */}
+            <div className="flex min-w-0 flex-col gap-3.5">
+              <div className="rounded-[18px] border border-ppj-line bg-white p-[18px]">
+                <span className="font-mono text-[12px] uppercase tracking-[0.16em] text-ppj-text-5">Votre offre</span>
+                <div className="mt-3 grid gap-2 text-[13.5px]">
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-ppj-ink">{date ? formatDateFr(date) : "Date à préciser"}</span>
+                    <span className="text-ppj-text-3">{ville ?? "Adresse à préciser"}</span>
+                  </span>
+                  <span className="my-0.5 block h-px bg-ppj-line-2" />
+                  {chips.map((c) => {
+                    const info = infosFamille(c.metier);
+                    return (
+                      <span key={c.metier} className="flex items-center justify-between gap-3">
+                        <span className="text-ppj-text-2">{info.filiere}</span>
+                        <span className="font-medium text-ppj-ink">
+                          {c.quantite} poste{c.quantite > 1 ? "s" : ""}
+                        </span>
+                      </span>
+                    );
+                  })}
+                  <span className="my-0.5 block h-px bg-ppj-line-2" />
+                  <span className="flex items-center justify-between gap-3 font-semibold text-ppj-ink">
+                    <span>Postes à pourvoir</span>
+                    <span>{totalPostes}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-[18px] border border-ppj-line bg-white p-[18px]">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-[13.5px] font-semibold text-ppj-ink">Avant de publier</p>
+                  {manques.length > 0 && <span className="text-[12px] text-ppj-red-text">{manques.length} à compléter</span>}
+                </div>
+                {manques.length === 0 ? (
+                  <p className="flex items-center gap-2 text-[13px] font-medium" style={{ color: "#2E7D4F" }}>
+                    <Check /> Tout est renseigné.
+                  </p>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAjoutOuvert(true)}
-                    className="inline-flex items-center gap-1 text-sm text-ppj-text-3 underline underline-offset-2 hover:text-ppj-ink"
-                  >
-                    <Plus className="size-3.5" />
-                    Ajouter un besoin
-                  </button>
+                  <div className="grid gap-1.5">
+                    {manques.map((m, i) => (
+                      <button
+                        key={`${m.label}-${m.scope}-${i}`}
+                        type="button"
+                        onClick={() => setOnglet(m.onglet)}
+                        className="flex min-h-11 items-center gap-2.5 rounded-lg px-1.5 text-left text-[13px] font-semibold text-ppj-red-text transition-colors hover:bg-ppj-red-bg"
+                      >
+                        <Dot /> {m.label} — {m.scope}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
+              <div className="rounded-[18px] border border-ppj-line bg-ppj-fill p-[18px]">
+                <p className="text-[13.5px] font-semibold text-ppj-ink">Ce qui se passe ensuite</p>
+                <p className="mt-2 text-[12.5px] leading-[1.6] text-ppj-text-2">
+                  L&apos;offre devient visible par les professionnels de ces métiers. Ils candidatent un par un ;
+                  vous consultez chaque profil, puis vous retenez ou vous écartez.
+                </p>
+                <p className="mt-2 text-[12.5px] leading-[1.6] text-ppj-text-2">Aucun panier, aucun paiement à ce stade.</p>
+              </div>
 
-          {/* Prérequis supplémentaires — libres, optionnels, extensibles */}
-          <div className="mx-auto mt-6 max-w-lg">
-            <p className="text-sm font-medium text-ppj-ink">Prérequis supplémentaires</p>
-            <p className="text-xs text-ppj-text-3">Indiquez toute expérience ou attente à laquelle vous tenez particulièrement.</p>
-            <div className="mt-2 space-y-2">
-              {prerequis.map((p, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={p}
-                    onChange={(e) => modifierPrerequis(i, e.target.value)}
-                    placeholder={SUGGESTIONS_PREREQUIS[i % SUGGESTIONS_PREREQUIS.length]}
-                    className="w-full rounded-[14px] border border-ppj-line-field bg-ppj-field px-4 py-2 text-sm text-ppj-ink outline-none focus:border-primary"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => retirerPrerequis(i)}
-                    aria-label="Retirer ce prérequis"
-                    className="shrink-0 text-ppj-text-3 hover:text-primary"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => ajouterPrerequis()}
-                className="inline-flex items-center gap-1 text-sm text-ppj-text-3 underline underline-offset-2 hover:text-ppj-ink"
+              <Button
+                className="min-h-[50px] w-full rounded-[13px] bg-primary text-[15px] font-semibold text-white hover:bg-[#B8130F]"
+                disabled={!pretPourPublication || envoiPublication}
+                onClick={publierDirectement}
               >
-                <Plus className="size-3.5" />
-                Ajouter
-              </button>
-            </div>
-          </div>
+                <Send className="size-3.5" />
+                {envoiPublication ? "Publication..." : "Publier l'offre"}
+              </Button>
+              {!pretPourPublication && (
+                <p className="-mt-2 text-center text-[12px] text-ppj-text-3">Complétez les informations manquantes ci-dessus pour publier.</p>
+              )}
+              {erreurPublication && <p className="-mt-2 text-center text-[13px] font-medium text-destructive">{erreurPublication}</p>}
 
-          {/* Votre message — le texte réellement envoyé/publié, composé automatiquement à partir de la description et des prérequis, mais entièrement modifiable à la main (comme le "Votre message" de Malt) ; un retour à la version générée reste possible tant que rien d'autre n'a changé la composition. */}
-          <div className="mx-auto mt-6 max-w-lg">
-            <div className="flex items-center justify-between gap-2">
-              <label htmlFor="besoin-message" className="text-sm font-medium text-ppj-ink">
-                Votre message
-              </label>
-              {messagePersonnalise !== null && (
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setMessagePersonnalise(null)}
-                  className="text-xs text-primary underline underline-offset-2 hover:opacity-80"
+                  onClick={enregistrerBrouillon}
+                  className="min-h-11 rounded-[13px] border border-ppj-line-button bg-white text-[13.5px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
                 >
-                  Revenir à la description générée
+                  Enregistrer le brouillon
                 </button>
-              )}
+                <Link
+                  href="/client/candidatures"
+                  className="flex min-h-11 items-center justify-center rounded-[13px] border border-ppj-line-button bg-white text-[13.5px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
+                >
+                  Candidatures
+                </Link>
+              </div>
             </div>
-            <textarea
-              id="besoin-message"
-              value={messageFinal()}
-              onChange={(e) => setMessagePersonnalise(e.target.value)}
-              rows={6}
-              className="mt-1.5 w-full resize-y rounded-[18px] border border-ppj-line-field bg-ppj-field px-4 py-3 text-sm leading-relaxed text-ppj-ink outline-none focus:border-primary"
-            />
-            <p className="mt-1 text-right text-xs text-ppj-text-4">{messageFinal().length} caractères</p>
           </div>
-
-          {/* Complétez les informations manquantes — TOUT ce qui manque encore pour une carte, dans un panneau unique et cohérent : lieu/horaire (bloquants pour tout) et date/tarif (bloquants seulement pour publier). Jamais éclaté entre ce panneau et une phrase générique selon ce qui manque. */}
-          {cartesIncompletes.length > 0 && (
-            <div className="mx-auto mt-6 max-w-lg rounded-[18px] border border-ppj-red-border bg-ppj-red-bg p-5">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-ppj-red-text">
-                <AlertCircle className="size-4" />
-                Complétez les informations manquantes
-              </p>
-              <p className="mt-1 text-xs text-ppj-red-text/80">
-                {pretPourRecherche
-                  ? "Nécessaire uniquement pour publier directement l'offre — \"Voir les profils disponibles\" fonctionne déjà."
-                  : "Nécessaire pour publier l'offre ou consulter les profils disponibles."}
-              </p>
-              <div className="mt-4 space-y-5">
-                {cartesIncompletes.map((chip) => {
-                  const info = infosFamille(chip.metier);
-                  const r = champsResolus(chip);
-                  return (
-                    <div key={chip.metier} className="space-y-3">
-                      <span className="flex items-center gap-1.5 text-sm font-medium text-ppj-ink">
-                        <span aria-hidden>{info.emoji}</span>
-                        {info.filiere}
-                      </span>
-                      {!r.ville && (
-                        <div>
-                          <p className="text-xs font-medium text-ppj-ink">Lieu de la mission</p>
-                          <div className="mt-1.5 max-w-xs">
-                            <VilleAutocompleteIdf
-                              value={chip.ville ?? ""}
-                              onChange={(v) => mettreAJourChip(chip.metier, { ville: v })}
-                              className="[&_input]:rounded-[14px] [&_input]:border-ppj-red-border"
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {!(r.heureDebut && r.heureFin) && (
-                        <div>
-                          <p className="text-xs font-medium text-ppj-ink">Horaire</p>
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            <input
-                              type="time"
-                              value={chip.heureDebut ?? ""}
-                              onChange={(e) => mettreAJourChip(chip.metier, { heureDebut: e.target.value || null })}
-                              className="rounded-[14px] border border-ppj-red-border bg-white px-2.5 py-1.5 text-sm text-ppj-ink"
-                            />
-                            <span className="text-sm text-ppj-text-3">→</span>
-                            <input
-                              type="time"
-                              value={chip.heureFin ?? ""}
-                              onChange={(e) => mettreAJourChip(chip.metier, { heureFin: e.target.value || null })}
-                              className="rounded-[14px] border border-ppj-red-border bg-white px-2.5 py-1.5 text-sm text-ppj-ink"
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {!r.date && (
-                        <div>
-                          <p className="text-xs font-medium text-ppj-ink">Date de la mission</p>
-                          <EditeurDate
-                            value={r.date}
-                            onChange={(d) => mettreAJourChip(chip.metier, { date: d })}
-                            onValider={() => {}}
-                            nomGroupe={`date-manquante-${chip.metier}`}
-                          />
-                        </div>
-                      )}
-                      {!(chip.tarifHoraire && chip.tarifHoraire > 0) && (
-                        <div>
-                          <p className="text-xs font-medium text-ppj-ink">Tarif horaire</p>
-                          <span className="mt-1.5 flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.5"
-                              value={chip.tarifHoraire ?? ""}
-                              onChange={(e) => mettreAJourChip(chip.metier, { tarifHoraire: Number(e.target.value) || null })}
-                              placeholder="Ex. 15"
-                              aria-label={`Tarif horaire pour ${info.filiere}`}
-                              className="w-28 rounded-[14px] border border-ppj-red-border bg-white px-2.5 py-1.5 text-sm text-ppj-ink"
-                            />
-                            <span className="text-sm text-ppj-text-3">€/h</span>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Lot E §16 — bande de clôture : un récapitulatif complet
-              avant toute action (aucune publication silencieuse), puis
-              les deux intentions strictement distinctes, jamais l'une
-              cachée derrière l'autre (cahier §10). */}
-          {pretPourRecherche && (
-            <div className="mx-auto mt-8 max-w-lg rounded-[20px] border border-ppj-line bg-ppj-fill px-6 py-6 text-center">
-              <p className="font-mono text-[11px] uppercase tracking-[.14em] text-ppj-text-3">Récapitulatif</p>
-              <p className="mt-1.5 text-ppj-ink" style={{ fontFamily: "var(--font-display-serif)", fontSize: "20px", letterSpacing: "-0.01em" }}>
-                {syntheseNaturelle()}
-              </p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                <Button
-                  type="button"
-                  onClick={voirLesProfils}
-                  disabled={envoiRecherche}
-                  className="rounded-[13px] bg-ppj-ink text-white hover:bg-primary"
-                >
-                  Voir les professionnels
-                  <ArrowRight className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={publierDirectement}
-                  disabled={!pretPourPublication || envoiPublication}
-                  className="rounded-[13px] border-ppj-line-button bg-white text-ppj-ink hover:border-ppj-ink"
-                >
-                  <Send className="size-3.5" />
-                  {envoiPublication ? "Publication..." : "Publier le besoin"}
-                </Button>
-              </div>
-              {!pretPourPublication && (
-                <p className="mt-3 text-xs text-ppj-text-3">
-                  &quot;Voir les professionnels&quot; ne publie rien. &quot;Publier le besoin&quot; attend encore le tarif ci-dessus.
-                </p>
-              )}
-              {erreurPublication && <p className="mt-2 text-sm font-medium text-destructive">{erreurPublication}</p>}
-            </div>
-          )}
         </div>
       )}
     </div>
   );
 }
 
+const champInputClass =
+  "w-full rounded-[13px] border border-ppj-line-field bg-ppj-field px-3.5 py-3 text-[14.5px] text-ppj-ink placeholder:text-ppj-text-4 focus:outline-none";
+
+/**
+ * Onglet du groupe "Commun / métiers" — même pastille de complétude
+ * que "Proposer la mission" (README §11) : rouge si incomplet, vert
+ * si prêt, rouge clair quand l'onglet est actif (lisibilité sur fond
+ * noir).
+ */
+function OngletBouton({ actif, complet, onClick, label }: { actif: boolean; complet: boolean; onClick: () => void; label: string }) {
+  const couleurPastille = actif ? "#FF8A85" : complet ? "#2E7D4F" : "#E21D1B";
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={actif}
+      onClick={onClick}
+      className={cn(
+        "flex min-h-11 items-center gap-1.5 rounded-[11px] px-3 text-[13px] font-medium transition-colors",
+        actif ? "bg-[#1A1917] text-[#FBFAF8]" : "border border-ppj-line bg-white text-ppj-ink hover:border-ppj-ink",
+      )}
+    >
+      <span className="block size-[6px] shrink-0 rounded-full" style={{ backgroundColor: couleurPastille }} />
+      {label}
+    </button>
+  );
+}
+
+function ChampCommun({
+  label,
+  hint,
+  manquant,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  manquant?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <span className="mb-1.5 flex items-center gap-2 text-[12.5px] font-semibold text-ppj-ink">
+        {label}
+        {manquant && <BadgeManquant>requis</BadgeManquant>}
+        {!manquant && hint && <span className="font-normal text-ppj-text-4">— {hint}</span>}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Dot() {
+  return <span className="block size-[15px] flex-none rounded-full border-[1.5px] border-primary" />;
+}
+
+function BadgeManquant({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full bg-primary px-2 py-[3px] text-[12px] text-white">{children}</span>;
+}
+
 /**
  * Choix de date à 3 options mutuellement exclusives — jamais un simple
  * calendrier vide. "Dès que possible" résout tout de suite une vraie
  * date (aujourd'hui, la plus proche possible) ; "Je ne sais pas encore"
- * est le repli explicite quand rien n'est décidé. L'option active se
- * déduit de la valeur courante (précise / aujourd'hui / vide) plutôt
- * que d'un champ dédié — pas de concept persistant supplémentaire.
+ * est le repli explicite quand rien n'est décidé.
  */
 function EditeurDate({
   value,
   onChange,
   onValider,
   nomGroupe,
+  compact,
 }: {
   value: string | null;
   onChange: (d: string | null) => void;
   onValider: () => void;
   nomGroupe: string;
+  compact?: boolean;
 }) {
   const aujourdhui = aujourdhuiIso();
   const [choix, setChoix] = useState<"asap" | "precise" | "inconnue">(
@@ -1133,7 +1096,7 @@ function EditeurDate({
   }
 
   return (
-    <div className="mt-2.5 flex w-full max-w-xs flex-col gap-1.5">
+    <div className={cn("flex w-full flex-col gap-1.5", compact ? "max-w-full" : "mt-2.5 max-w-xs")}>
       <label className={optionClass(choix === "asap")}>
         <input
           type="radio"
@@ -1182,11 +1145,18 @@ function EditeurDate({
   );
 }
 
-type ChampCarte = "date" | "heure" | "lieu";
-
-function CarteEquipe({
+/**
+ * Contenu de l'onglet d'un métier — reprend telle quelle la logique
+ * de CarteEquipe (Lots A-F), mais sans son propre bloc date/heure/lieu
+ * empilé : ces trois champs vivent maintenant dans l'onglet "Commun"
+ * (partagés) sauf horaires, qui restent propres à CE métier (jamais
+ * globaux, README §11) et s'affichent donc ici, toujours visibles.
+ * Nouveau : Rémunération (tarif horaire), obligatoire, absente du
+ * parcours "Proposer la mission" — c'est le professionnel qui y
+ * renvoie son propre devis, alors qu'ici personne n'a encore répondu.
+ */
+function PanneauMetier({
   chip,
-  valeursGlobales,
   onRetirer,
   onAjusterQuantite,
   onModifier,
@@ -1196,7 +1166,6 @@ function CarteEquipe({
   onConfirmerQuantite,
 }: {
   chip: Chip;
-  valeursGlobales: { date: string | null; heureDebut: string | null; heureFin: string | null; ville: string | null };
   onRetirer: () => void;
   onAjusterQuantite: (delta: number) => void;
   onModifier: (patch: Partial<Chip>) => void;
@@ -1205,159 +1174,122 @@ function CarteEquipe({
   onModifierAmbiguite: (champ: Ambiguite["champ"]) => void;
   onConfirmerQuantite: () => void;
 }) {
-  const [edition, setEdition] = useState<ChampCarte | null>(null);
+  const [editionDate, setEditionDate] = useState(false);
   const info = infosFamille(chip.metier);
 
-  const dateEffective = chip.date ?? valeursGlobales.date;
-  const heureDebutEffective = chip.heureDebut ?? valeursGlobales.heureDebut;
-  const heureFinEffective = chip.heureFin ?? valeursGlobales.heureFin;
-  const villeEffective = chip.ville ?? valeursGlobales.ville;
-
   return (
-    <div className={cn("rounded-[20px] border border-l-[3px] border-ppj-line bg-white p-5 sm:p-6", info.accent.border)}>
-      <div className="flex items-start gap-4">
-        <div
-          className={cn("flex size-11 shrink-0 items-center justify-center rounded-full text-lg", info.accent.bgSoft)}
-          aria-hidden
-        >
-          {info.emoji}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-[21px] leading-tight text-ppj-ink"
-            style={{ fontFamily: "var(--font-display-serif)", letterSpacing: "-0.01em" }}
-          >
-            {info.filiere}
-          </p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-1.5 rounded-full border border-ppj-line-field bg-ppj-field px-1 py-1">
-              <button
-                type="button"
-                onClick={() => onAjusterQuantite(-1)}
-                aria-label="Réduire le nombre de postes"
-                className="flex size-6 items-center justify-center rounded-full text-ppj-ink transition-colors hover:bg-white"
-              >
-                <Minus className="size-3" />
-              </button>
-              <span className="min-w-[1.5em] text-center text-sm font-semibold tabular-nums text-ppj-ink">{chip.quantite}</span>
-              <button
-                type="button"
-                onClick={() => onAjusterQuantite(1)}
-                aria-label="Augmenter le nombre de postes"
-                className="flex size-6 items-center justify-center rounded-full text-ppj-ink transition-colors hover:bg-white"
-              >
-                <Plus className="size-3" />
-              </button>
-            </div>
-            <span className="text-sm text-ppj-text-3">
-              professionnel{chip.quantite > 1 ? "s" : ""}
-            </span>
-          </div>
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[12px] text-ppj-text-3">Vérifié : disponibilité, expérience, présentation.</p>
         </div>
         <button
           type="button"
           onClick={onRetirer}
-          aria-label={`Retirer ${info.filiere} de l'équipe`}
+          aria-label={`Retirer ${info.filiere} de l'offre`}
           className="shrink-0 rounded-full p-1 text-ppj-text-3 transition-colors hover:bg-ppj-fill hover:text-primary"
         >
           <X className="size-4" />
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-ppj-line-2 pt-4">
-        <ChampMini
-          icone={<CalendarDays className="size-3 shrink-0" />}
-          rempli
-          label={dateEffective ? formatDateFr(dateEffective) : "Je ne sais pas encore"}
-          actif={edition === "date"}
-          onClick={() => setEdition(edition === "date" ? null : "date")}
-        />
-        <ChampMini
-          icone={<Clock className="size-3 shrink-0" />}
-          rempli={Boolean(heureDebutEffective && heureFinEffective)}
-          label={
-            heureDebutEffective && heureFinEffective
-              ? `${heureDebutEffective} → ${heureFinEffective}`
-              : chip.moment
-                ? `${LABEL_MOMENT[chip.moment]} — horaires à préciser`
-                : "Horaires à préciser"
-          }
-          actif={edition === "heure"}
-          onClick={() => setEdition(edition === "heure" ? null : "heure")}
-        />
-        <ChampMini
-          icone={<MapPin className="size-3 shrink-0" />}
-          rempli={Boolean(villeEffective)}
-          label={villeEffective ?? "Lieu à préciser"}
-          actif={edition === "lieu"}
-          onClick={() => setEdition(edition === "lieu" ? null : "lieu")}
-        />
-      </div>
-      <p className="mt-2 text-xs text-ppj-text-4">Vérifié : {CE_QUI_SERA_VERIFIE[chip.metier]}</p>
-
-      {/* Lot D §7 — plusieurs jours cités pour ce métier : strictement
-          informatif, une seule offre sera publiée (à la date ci-dessus) —
-          jamais une série construite ici. */}
-      {chip.datesMultiples && chip.datesMultiples.length > 1 && (
-        <p className="mt-2 text-xs text-ppj-text-3">
-          Plusieurs jours mentionnés : {chip.datesMultiples.map((d) => formatDateFr(d)).join(", ")}. Une offre sera publiée pour le premier ; les autres jours restent à publier séparément si besoin.
-        </p>
-      )}
-
-      {edition === "date" && (
-        <EditeurDate
-          value={dateEffective}
-          onChange={(d) => onModifier({ date: d })}
-          onValider={() => setEdition(null)}
-          nomGroupe={`date-carte-choix-${chip.metier}`}
-        />
-      )}
-      {edition === "heure" && (
-        <div className="mt-2.5 flex items-center gap-1.5">
-          <input
-            type="time"
-            autoFocus
-            value={chip.heureDebut ?? valeursGlobales.heureDebut ?? ""}
-            onChange={(e) => onModifier({ heureDebut: e.target.value || null })}
-            className="rounded-[10px] border border-ppj-line-field bg-ppj-field px-2 py-1 text-xs text-ppj-ink"
-          />
-          <span className="text-xs text-ppj-text-3">→</span>
-          <input
-            type="time"
-            value={chip.heureFin ?? valeursGlobales.heureFin ?? ""}
-            onChange={(e) => onModifier({ heureFin: e.target.value || null })}
-            className="rounded-[10px] border border-ppj-line-field bg-ppj-field px-2 py-1 text-xs text-ppj-ink"
-          />
-          <button type="button" onClick={() => setEdition(null)} aria-label="Valider l'horaire" className="text-ppj-ink hover:opacity-70">
-            <Check className="size-4" />
-          </button>
-        </div>
-      )}
-      {edition === "lieu" && (
-        <div className="mt-2.5 flex max-w-[220px] items-center gap-1.5">
-          <VilleAutocompleteIdf
-            value={chip.ville ?? valeursGlobales.ville ?? ""}
-            onChange={(v) => onModifier({ ville: v })}
-            className="[&_input]:h-8 [&_input]:text-xs"
-          />
+      <div className="mt-3 flex flex-wrap items-center gap-2.5">
+        <span className="text-[12.5px] font-semibold text-ppj-ink">Postes à pourvoir</span>
+        <div className="flex items-center gap-1.5 rounded-full border border-ppj-line-field bg-ppj-field px-1 py-1">
           <button
             type="button"
-            onClick={() => setEdition(null)}
-            aria-label="Valider la ville"
-            className="shrink-0 text-ppj-ink hover:opacity-70"
+            onClick={() => onAjusterQuantite(-1)}
+            aria-label="Réduire le nombre de postes"
+            className="flex size-7 items-center justify-center rounded-full text-ppj-ink transition-colors hover:bg-white"
           >
-            <Check className="size-4" />
+            −
+          </button>
+          <span className="min-w-[1.5em] text-center text-sm font-semibold tabular-nums text-ppj-ink">{chip.quantite}</span>
+          <button
+            type="button"
+            onClick={() => onAjusterQuantite(1)}
+            aria-label="Augmenter le nombre de postes"
+            className="flex size-7 items-center justify-center rounded-full text-ppj-ink transition-colors hover:bg-white"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      {chip.quantiteIncertaine && (
+        <div className="mt-3 rounded-[14px] bg-ppj-fill px-3.5 py-3">
+          <p className="text-[13px] leading-relaxed text-ppj-ink">Combien de personnes souhaitez-vous ? Nous avons mis {chip.quantite} par défaut.</p>
+          <button
+            type="button"
+            onClick={onConfirmerQuantite}
+            className="mt-1.5 rounded-full bg-ppj-ink px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary"
+          >
+            {chip.quantite} suffit{chip.quantite > 1 ? "sent" : ""}
           </button>
         </div>
       )}
 
-      {/* Lot B — contexte (un seul, partagé) et contraintes (plusieurs,
-          strictement propres à ce métier) : n'apparaît que si le texte
-          en a réellement fourni, jamais une section vide ; chaque
-          élément reste modifiable/supprimable individuellement (cahier §7).
-          Lot C — un contexte "probable" (pas certain) porte en plus un
-          court "Correct ?" ; une contrainte "préférée" (pas requise)
-          porte la mention "souhaité", jamais présentée comme une obligation. */}
+      <div className="mt-4 grid gap-[13px] border-t border-ppj-line-2 pt-4">
+        <ChampCommun label="Horaires du poste" manquant={!(chip.heureDebut && chip.heureFin)}>
+          <div className="flex items-center gap-2">
+            <input
+              type="time"
+              value={chip.heureDebut ?? ""}
+              onChange={(e) => onModifier({ heureDebut: e.target.value || null })}
+              className={inputHoraireClass(!chip.heureDebut)}
+            />
+            <span className="text-[13px] text-ppj-text-4">→</span>
+            <input
+              type="time"
+              value={chip.heureFin ?? ""}
+              onChange={(e) => onModifier({ heureFin: e.target.value || null })}
+              className={inputHoraireClass(!chip.heureFin)}
+            />
+          </div>
+          {chip.moment && !chip.heureDebut && (
+            <p className="mt-1.5 text-[12px] text-ppj-text-3">{LABEL_MOMENT[chip.moment]} — horaires à préciser</p>
+          )}
+        </ChampCommun>
+
+        <ChampCommun label="Rémunération proposée" manquant={!(chip.tarifHoraire && chip.tarifHoraire > 0)}>
+          <span className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0}
+              step="0.5"
+              value={chip.tarifHoraire ?? ""}
+              onChange={(e) => onModifier({ tarifHoraire: Number(e.target.value) || null })}
+              placeholder="Ex. 15"
+              aria-label={`Tarif horaire pour ${info.filiere}`}
+              className={cn(champInputClass, "w-32")}
+            />
+            <span className="text-[13.5px] text-ppj-text-3">€/h</span>
+          </span>
+        </ChampCommun>
+
+        {chip.date && (
+          <ChampCommun label="Date propre à ce métier" hint="différente de la date commune">
+            <button
+              type="button"
+              onClick={() => setEditionDate((v) => !v)}
+              className="rounded-[13px] border border-ppj-line-field bg-ppj-field px-3.5 py-3 text-left text-[14px] text-ppj-ink"
+            >
+              {formatDateFr(chip.date)}
+            </button>
+            {editionDate && (
+              <EditeurDate value={chip.date} onChange={(d) => onModifier({ date: d })} onValider={() => setEditionDate(false)} nomGroupe={`date-${chip.metier}`} compact />
+            )}
+          </ChampCommun>
+        )}
+
+        {chip.datesMultiples && chip.datesMultiples.length > 1 && (
+          <p className="text-[12px] text-ppj-text-3">
+            Plusieurs jours mentionnés : {chip.datesMultiples.map((d) => formatDateFr(d)).join(", ")}. Une offre sera
+            publiée pour le premier ; les autres jours restent à publier séparément si besoin.
+          </p>
+        )}
+      </div>
+
       {(chip.contexte || chip.contraintes.length > 0) && (
         <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-ppj-line-2 pt-4">
           {chip.contexte && (
@@ -1391,11 +1323,6 @@ function CarteEquipe({
         </div>
       )}
 
-      {/* Lot C §1/§9, redessiné au Lot E — informations déjà préremplies
-          mais pas certaines : jamais bloquantes (la carte reste
-          utilisable telle quelle), toujours confirmables en un geste.
-          Même langage visuel calme que la bannière ville globale —
-          jamais un ton d'alerte pour une simple vérification. */}
       {chip.ambiguites.length > 0 && (
         <div className="mt-4 space-y-2">
           {chip.ambiguites.map((a) => (
@@ -1421,56 +1348,18 @@ function CarteEquipe({
           ))}
         </div>
       )}
-      {chip.quantiteIncertaine && (
-        <div className="mt-4 rounded-[14px] bg-ppj-fill px-3.5 py-3">
-          <p className="text-[13px] leading-relaxed text-ppj-ink">Combien de personnes souhaitez-vous ? Nous avons mis {chip.quantite} par défaut.</p>
-          <button
-            type="button"
-            onClick={onConfirmerQuantite}
-            className="mt-1.5 rounded-full bg-ppj-ink px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary"
-          >
-            {chip.quantite} suffit{chip.quantite > 1 ? "sent" : ""}
-          </button>
-        </div>
-      )}
     </div>
   );
+}
+
+function inputHoraireClass(manquant: boolean) {
+  return manquant
+    ? "flex-1 rounded-[11px] border-[1.5px] border-primary bg-white px-3 py-[9px] text-[14px] text-ppj-ink focus:outline-none"
+    : "flex-1 rounded-[11px] border border-ppj-line-field bg-ppj-field px-3 py-[10px] text-[14px] text-ppj-ink focus:outline-none";
 }
 
 /** Lot C — met en forme la valeur brute d'une Ambiguite ("date" en ISO, "horaires" en HH:mm ou HH:mm-HH:mm) pour l'afficher dans le bouton de confirmation, sans dupliquer la logique de formatage déjà utilisée pour l'affichage normal des cartes. */
 function formatPropositionAmbiguite(a: Ambiguite): string {
   if (a.champ === "date") return formatDateFr(a.propose);
   return a.propose.includes("-") ? a.propose.replace("-", " → ") : a.propose;
-}
-
-function ChampMini({
-  icone,
-  label,
-  rempli,
-  actif,
-  onClick,
-}: {
-  icone: React.ReactNode;
-  label: string;
-  rempli: boolean;
-  actif: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[13px] font-medium transition-colors",
-        actif
-          ? "bg-ppj-ink text-white"
-          : rempli
-            ? "bg-ppj-fill text-ppj-ink hover:bg-ppj-line-2"
-            : "text-primary underline decoration-primary/40 decoration-dotted underline-offset-4 hover:decoration-primary",
-      )}
-    >
-      {icone}
-      {label}
-    </button>
-  );
 }

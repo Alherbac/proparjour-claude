@@ -44,7 +44,7 @@ export type AdminRole = "admin" | "moderator";
 
 export type OffreStatutType = "publiee" | "pourvue" | "annulee" | "expiree";
 
-export type CandidatureStatutType = "en_attente" | "acceptee" | "refusee";
+export type CandidatureStatutType = "en_attente" | "en_discussion" | "acceptee" | "refusee";
 
 export type UsersRow = {
   id: string;
@@ -81,11 +81,13 @@ export type PrestatairesProfilsRow = {
   secteur_experience: string | null;
   remuneration_commission: boolean;
   specialites: string[];
+  annees_experience: number | null;
   bio: string | null;
   ville: string;
   tarif_type: TarifType;
   tarif_montant: number;
   disponibilites: string[];
+  zones_deplacement: string[];
   photo_url: string | null;
   statut_verification: StatutVerificationType;
   motif_refus: string | null;
@@ -115,6 +117,22 @@ export type AdminAuditLogRow = {
   motif: string | null;
   details: Record<string, unknown> | null;
   created_at: string;
+};
+
+export type TauxCommissionMetierRow = { metier: MetierType; taux: number; updated_at: string; updated_by: string | null };
+export type TauxCommissionPrestataireRow = { prestataire_id: string; taux: number; updated_at: string; updated_by: string | null };
+export type TauxFraisSegmentClientRow = { segment: string; taux: number; updated_at: string; updated_by: string | null };
+export type TauxFraisClientRow = { recruteur_id: string; taux: number; updated_at: string; updated_by: string | null };
+
+export type VisitesRow = { id: string; chemin: string; session_id: string; appareil: "mobile" | "desktop"; created_at: string };
+
+export type VillesAdminRow = {
+  id: string;
+  nom: string;
+  code_zone: string;
+  active: boolean;
+  created_at: string;
+  created_by: string | null;
 };
 
 export type ExperiencesRow = {
@@ -173,6 +191,9 @@ export type MissionsRow = {
   motif_litige: string | null;
   montant_total: number;
   serie_id: string | null;
+  modalites_acces: string | null;
+  contact_sur_place: string | null;
+  consignes_particulieres: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -252,6 +273,7 @@ export type CandidaturesRow = {
   prestataire_id: string;
   statut: CandidatureStatutType;
   message: string | null;
+  profil_consulte_le: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -448,6 +470,42 @@ export type Database = {
         Update: Partial<AdminAuditLogRow>;
         Relationships: [];
       };
+      taux_commission_metier: {
+        Row: TauxCommissionMetierRow;
+        Insert: Omit<TauxCommissionMetierRow, "updated_at"> & Partial<Pick<TauxCommissionMetierRow, "updated_at">>;
+        Update: Partial<TauxCommissionMetierRow>;
+        Relationships: [];
+      };
+      taux_commission_prestataire: {
+        Row: TauxCommissionPrestataireRow;
+        Insert: Omit<TauxCommissionPrestataireRow, "updated_at"> & Partial<Pick<TauxCommissionPrestataireRow, "updated_at">>;
+        Update: Partial<TauxCommissionPrestataireRow>;
+        Relationships: [];
+      };
+      taux_frais_segment_client: {
+        Row: TauxFraisSegmentClientRow;
+        Insert: Omit<TauxFraisSegmentClientRow, "updated_at"> & Partial<Pick<TauxFraisSegmentClientRow, "updated_at">>;
+        Update: Partial<TauxFraisSegmentClientRow>;
+        Relationships: [];
+      };
+      taux_frais_client: {
+        Row: TauxFraisClientRow;
+        Insert: Omit<TauxFraisClientRow, "updated_at"> & Partial<Pick<TauxFraisClientRow, "updated_at">>;
+        Update: Partial<TauxFraisClientRow>;
+        Relationships: [];
+      };
+      visites: {
+        Row: VisitesRow;
+        Insert: Omit<VisitesRow, "id" | "created_at"> & Partial<Pick<VisitesRow, "id" | "created_at">>;
+        Update: Partial<VisitesRow>;
+        Relationships: [];
+      };
+      villes_admin: {
+        Row: VillesAdminRow;
+        Insert: Omit<VillesAdminRow, "id" | "created_at" | "active"> & Partial<Pick<VillesAdminRow, "id" | "created_at" | "active">>;
+        Update: Partial<VillesAdminRow>;
+        Relationships: [];
+      };
       experiences: {
         Row: ExperiencesRow;
         Insert: Omit<ExperiencesRow, "id" | "created_at" | "updated_at"> &
@@ -547,8 +605,8 @@ export type Database = {
       };
       candidatures: {
         Row: CandidaturesRow;
-        Insert: Omit<CandidaturesRow, "id" | "created_at" | "updated_at" | "statut" | "message"> &
-          Partial<Pick<CandidaturesRow, "id" | "statut" | "message">>;
+        Insert: Omit<CandidaturesRow, "id" | "created_at" | "updated_at" | "statut" | "message" | "profil_consulte_le"> &
+          Partial<Pick<CandidaturesRow, "id" | "statut" | "message" | "profil_consulte_le">>;
         Update: Partial<CandidaturesRow>;
         Relationships: [
           {

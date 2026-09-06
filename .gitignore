@@ -45,3 +45,10 @@ next-env.d.ts
 /migration-data/
 /migration-report*.csv
 /migration-report*.json
+
+# dossiers de maquettes design déposés à la racine (exports d'outils
+# de design, hors périmètre du code applicatif)
+/3 Istanbul design 2/
+/Asia design proparjour/
+/Claude Istanbul 1/
+/110790prodesign/

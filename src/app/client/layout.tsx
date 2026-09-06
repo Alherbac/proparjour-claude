@@ -3,6 +3,7 @@ import { Instrument_Serif, Public_Sans, IBM_Plex_Mono } from "next/font/google";
 import { Sidebar, type LienNav } from "@/app/client/_components/sidebar";
 import { MobileNav } from "@/app/client/_components/mobile-nav";
 import { getSessionClient, getMissionsClient, getOffresAvecCandidatures, candidaturesAExaminer, getConversationsClient } from "@/app/client/_data";
+import { getNotifications } from "@/lib/notifications";
 
 /**
  * Coquille de l'espace client — dossier design §3. Polices chargées
@@ -18,9 +19,14 @@ export default async function ClientLayout({ children }: { children: React.React
   const session = await getSessionClient();
   if (!session) redirect("/connexion?next=/client");
 
-  const [missions, offres] = await Promise.all([getMissionsClient(session.userId), getOffresAvecCandidatures(session.userId)]);
+  const [missions, offres, notifications] = await Promise.all([
+    getMissionsClient(session.userId),
+    getOffresAvecCandidatures(session.userId),
+    getNotifications(50),
+  ]);
   const conversations = await getConversationsClient(session.userId, missions);
   const nonLusTotal = conversations.reduce((s, c) => s + c.nonLus, 0);
+  const notifsNonLues = notifications.filter((n) => !n.lu).length;
 
   const liens: LienNav[] = [
     { href: "/client", label: "Vue d'ensemble" },
@@ -32,6 +38,15 @@ export default async function ClientLayout({ children }: { children: React.React
     { href: "/client/parametres", label: "Paramètres" },
   ];
 
+  // Fonctionnalités réelles migrées depuis l'ancien /tableau-de-bord,
+  // absentes des 14 écrans du dossier design mais pas de l'application —
+  // conservées ici plutôt que perdues (§ vérification avant suppression).
+  const autres: LienNav[] = [
+    { href: "/client/professionnels", label: "Professionnels habituels" },
+    { href: "/client/series", label: "Séries récurrentes" },
+    { href: "/client/notifications", label: "Notifications", compteur: notifsNonLues },
+  ];
+
   const nomAffiche = session.entreprise?.raison_sociale || `${session.profil.prenom ?? ""} ${session.profil.nom ?? ""}`.trim() || "Compte";
 
   return (
@@ -40,12 +55,12 @@ export default async function ClientLayout({ children }: { children: React.React
       style={{ backgroundColor: "#FBFAF8", fontFamily: "var(--font-public-sans), sans-serif" }}
     >
       <div className="hidden lg:flex">
-        <Sidebar espace="Espace client" liens={liens} nom={nomAffiche} sousTitre={session.email} />
+        <Sidebar espace="Espace client" liens={liens} autres={autres} nom={nomAffiche} sousTitre={session.email} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1240px] px-5 pb-24 pt-5 md:px-[30px] md:pt-[26px] lg:pb-[56px]">{children}</div>
       </div>
-      <MobileNav liens={liens} />
+      <MobileNav liens={[...liens, ...autres]} />
     </div>
   );
 }

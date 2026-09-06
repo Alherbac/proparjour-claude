@@ -12,11 +12,30 @@ import { GoogleButton } from "@/components/onboarding/recruteur/google-button";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { verifierLimiteConnexion } from "@/app/actions/auth";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** Espace réel d'un utilisateur selon son rôle — /client et /prestataire sont deux espaces distincts (contrairement à l'ancien /tableau-de-bord unique, qui se répartissait lui-même en interne). */
+async function destinationSelonRole(supabase: SupabaseClient, userId: string): Promise<string> {
+  const { data: profil } = await supabase.from("users").select("type").eq("id", userId).maybeSingle();
+  if (profil?.type === "prestataire") return "/prestataire";
+  if (profil?.type === "admin") return "/admin";
+  return "/client";
+}
 
 export function ConnexionForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/tableau-de-bord";
+  // Sans "next" explicite, la destination dépend du rôle — déterminée
+  // juste après la connexion réussie (voir handleSubmit), jamais
+  // fixée à l'avance : /client et /prestataire sont deux espaces
+  // distincts, contrairement à l'ancien /tableau-de-bord unique qui
+  // savait lui-même se répartir en interne.
+  const next = searchParams.get("next");
+  // Distinct de `next` ci-dessus : ne transmet vers l'inscription que si un
+  // vrai "next" a été fourni — sinon chaque inscription ordinaire serait
+  // redirigée vers l'espace au lieu de l'écran de bienvenue habituel
+  // (RecruteurSuccessScreen).
+  const nextExplicite = searchParams.get("next");
 
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
@@ -36,7 +55,7 @@ export function ConnexionForm() {
     }
 
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password: motDePasse,
     });
@@ -51,12 +70,12 @@ export function ConnexionForm() {
       return;
     }
 
-    router.push(next);
+    router.push(next ?? (await destinationSelonRole(supabase, signInData.user.id)));
     router.refresh();
   }
 
   async function handleGoogleClick() {
-    const { error: oauthError } = await signInWithGoogle(next);
+    const { error: oauthError } = await signInWithGoogle(next ?? "/");
     if (oauthError) setError(oauthError.message);
   }
 
@@ -122,7 +141,10 @@ export function ConnexionForm() {
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Pas encore de compte ?{" "}
-            <Link href="/inscription/recruteur" className="text-primary underline">
+            <Link
+              href={nextExplicite ? `/inscription/recruteur?next=${encodeURIComponent(nextExplicite)}` : "/inscription/recruteur"}
+              className="text-primary underline"
+            >
               Je recrute
             </Link>{" "}
             ·{" "}

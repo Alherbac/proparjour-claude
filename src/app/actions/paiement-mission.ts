@@ -78,6 +78,29 @@ export async function creerIntentionPaiementMission(
     return { success: false, error: "Cette mission n'attend pas de paiement." };
   }
 
+  // Le devis (s'il y en a un — absent sur les missions nées hors
+  // parcours candidature, ex. panier, voir DevisPayload dans
+  // lib/messages.ts) doit être la version ACTIVE et ACCEPTÉE avant de
+  // pouvoir payer : jamais une ancienne version, jamais un devis
+  // encore "en_attente"/"ajustement_demande"/"refusee". Revérifié ici,
+  // côté serveur, pas seulement en cachant le bouton "Payer" dans
+  // DevisCard tant que devis.statut !== "acceptee".
+  const { data: dernierDevis } = await admin
+    .from("messages")
+    .select("metadata")
+    .eq("mission_id", missionId)
+    .eq("destinataire_id", user.id)
+    .eq("type", "devis")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (dernierDevis) {
+    const statutDevis = (dernierDevis.metadata as { statut?: string } | null)?.statut ?? "acceptee";
+    if (statutDevis !== "acceptee") {
+      return { success: false, error: "Le devis actif de cette mission n'a pas encore été accepté." };
+    }
+  }
+
   const montant = await montantAPayer(admin, missionId);
   if (montant <= 0) {
     return { success: false, error: "Aucun professionnel n'a encore accepté cette mission." };
@@ -107,6 +130,56 @@ export async function creerIntentionPaiementMission(
   return { success: true, data: { clientSecret: intent.client_secret, montant } };
 }
 
+export type RepartitionPaiement = {
+  total: number;
+  netPrestataire: number;
+  commission: number;
+  tauxCommission: number;
+};
+
+/**
+ * Répartition prestataire / commission d'une mission, pour l'afficher
+ * au client avant paiement (carte devis) — jamais une fonctionnalité
+ * de tarification, seulement de la transparence sur un montant déjà
+ * dû aujourd'hui : le total affiché est calculé exactement comme
+ * `creerIntentionPaiementMission` (montantAPayer, lignes réellement
+ * acceptées), pour ne jamais désynchroniser l'affichage du montant
+ * réellement facturé. Le taux vient de `paiements.taux_commission`,
+ * figé à la création de la mission (jamais recalculé après coup).
+ */
+export async function obtenirRepartitionPaiement(missionId: string): Promise<ActionResult<RepartitionPaiement>> {
+  const supabaseServer = await createClient();
+  const {
+    data: { user },
+  } = await supabaseServer.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const { data: mission } = await supabaseServer
+    .from("missions")
+    .select("id, recruteur_id")
+    .eq("id", missionId)
+    .maybeSingle();
+  if (!mission || mission.recruteur_id !== user.id) {
+    return { success: false, error: "Mission introuvable." };
+  }
+
+  const admin = createAdminClient();
+  const [{ data: paiement }, total] = await Promise.all([
+    admin.from("paiements").select("taux_commission").eq("mission_id", missionId).maybeSingle(),
+    montantAPayer(admin, missionId),
+  ]);
+  if (!paiement) {
+    return { success: false, error: "Aucun paiement associé à cette mission." };
+  }
+
+  const commission = Math.round(total * (paiement.taux_commission / 100) * 100) / 100;
+  const netPrestataire = Math.round((total - commission) * 100) / 100;
+
+  return { success: true, data: { total, netPrestataire, commission, tauxCommission: paiement.taux_commission } };
+}
+
 /**
  * Cœur de la confirmation, partagé entre confirmerPaiementMission
  * (déclenché par le navigateur du recruteur) et le webhook Stripe
@@ -126,7 +199,7 @@ export async function confirmerPaiementMissionAvecIntent(
 
   const { data: mission } = await admin
     .from("missions")
-    .select("id, lieu, date_mission")
+    .select("id, lieu, date_mission, candidature_id")
     .eq("id", missionId)
     .maybeSingle();
   if (!mission) {
@@ -168,6 +241,21 @@ export async function confirmerPaiementMissionAvecIntent(
   });
   if (error) {
     return { success: false, error: traduireErreurDb(error, "Impossible de confirmer le paiement pour le moment.") };
+  }
+
+  // Seule étape qui fait réellement passer une candidature à
+  // "acceptee" — jamais "Retenir" (voir repondreCandidature,
+  // actions/offres.ts, qui écrit "en_discussion"). Garde explicite sur
+  // "en_discussion" : idempotent (un second appel, webhook + retour
+  // navigateur, ne fait rien de plus), et ne touche jamais une
+  // candidature déjà "refusee"/"acceptee" ni les missions nées hors
+  // parcours candidature (candidature_id null, ex. panier).
+  if (mission.candidature_id) {
+    await admin
+      .from("candidatures")
+      .update({ statut: "acceptee" })
+      .eq("id", mission.candidature_id)
+      .eq("statut", "en_discussion");
   }
 
   // Seuls les professionnels réellement acceptés (donc réellement

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { ShieldCheck, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { AdminButton } from "@/components/admin/ui/button";
+import { AdminInput } from "@/components/admin/ui/input";
 
 type Etape = "inactif" | "qr_affiche" | "verification_en_cours";
 
@@ -65,10 +65,10 @@ export function TwoFactorSetup({ dejaActivee }: { dejaActivee: boolean }) {
   if (activee) {
     return (
       <div className="flex items-center gap-3">
-        <ShieldCheck className="size-6 text-emerald-600 dark:text-emerald-400" />
+        <ShieldCheck className="size-6" style={{ color: "var(--a-badge-green-text)" }} />
         <div>
-          <p className="text-sm font-medium text-foreground">Double authentification activée</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[13px] font-semibold text-[var(--a-ink)]">Double authentification activée</p>
+          <p className="text-[13px] text-[var(--a-text-2)]">
             Un code de ton application d&apos;authentification est demandé à chaque connexion.
           </p>
         </div>
@@ -79,49 +79,57 @@ export function TwoFactorSetup({ dejaActivee }: { dejaActivee: boolean }) {
   if (etape === "inactif") {
     return (
       <div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[13px] text-[var(--a-text-2)]">
           Obligatoire pour tout compte admin ou modérateur — configure-la maintenant pour accéder au
           reste du back-office.
         </p>
-        <Button className="mt-3 rounded-full" onClick={demarrerEnrolement} disabled={envoi}>
+        <AdminButton variant="primary" className="mt-3" onClick={demarrerEnrolement} disabled={envoi}>
           {envoi && <Loader2 className="size-4 animate-spin" />}
           Configurer la double authentification
-        </Button>
-        {erreur && <p className="mt-2 text-sm text-destructive">{erreur}</p>}
+        </AdminButton>
+        {erreur && (
+          <p className="mt-2 text-[13px]" style={{ color: "var(--a-badge-red-text)" }}>
+            {erreur}
+          </p>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-foreground">
+      <p className="text-[13px] text-[var(--a-ink)]">
         Scanne ce code avec ton application d&apos;authentification (Google Authenticator, 1Password,
         etc.), puis saisis le code à 6 chiffres.
       </p>
       {qrCode && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={qrCode} alt="QR code de configuration 2FA" className="size-48 rounded-lg border border-border" />
+        <img src={qrCode} alt="QR code de configuration 2FA" className="size-48 rounded-[11px] border border-[var(--a-border-strong)]" />
       )}
       {secret && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[12px] text-[var(--a-text-3)]">
           Impossible de scanner ? Saisis ce code manuellement :{" "}
-          <code className="rounded bg-secondary px-1.5 py-0.5 font-mono">{secret}</code>
+          <code className="rounded-[6px] bg-[var(--a-surface-2)] px-1.5 py-0.5 font-mono">{secret}</code>
         </p>
       )}
       <div className="flex items-center gap-2">
-        <Input
+        <AdminInput
           value={code}
           onChange={(e) => setCode(e.target.value)}
           placeholder="123456"
           maxLength={6}
           className="w-32"
         />
-        <Button onClick={confirmerCode} disabled={envoi || code.trim().length !== 6} className="rounded-full">
+        <AdminButton variant="primary" onClick={confirmerCode} disabled={envoi || code.trim().length !== 6}>
           {envoi && <Loader2 className="size-4 animate-spin" />}
           Valider
-        </Button>
+        </AdminButton>
       </div>
-      {erreur && <p className="text-sm text-destructive">{erreur}</p>}
+      {erreur && (
+        <p className="text-[13px]" style={{ color: "var(--a-badge-red-text)" }}>
+          {erreur}
+        </p>
+      )}
     </div>
   );
 }

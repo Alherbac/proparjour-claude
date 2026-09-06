@@ -30,6 +30,30 @@ export async function getRepartitionParMetier(): Promise<RepartitionMetier[]> {
   }));
 }
 
+/** Missions créées, groupées par mois — les 4 derniers mois (§5.9, onglet Historique). */
+export async function getMissionsParMoisRecent(): Promise<{ mois: string; nb: number }[]> {
+  const admin = createAdminClient();
+  const depuis = new Date();
+  depuis.setMonth(depuis.getMonth() - 3);
+  depuis.setDate(1);
+  const { data } = await admin.from("missions").select("created_at").gte("created_at", depuis.toISOString());
+
+  const compteur = new Map<string, number>();
+  const mois: string[] = [];
+  const curseur = new Date(depuis);
+  for (let i = 0; i < 4; i++) {
+    const cle = curseur.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    mois.push(cle);
+    compteur.set(cle, 0);
+    curseur.setMonth(curseur.getMonth() + 1);
+  }
+  for (const m of data ?? []) {
+    const cle = new Date(m.created_at).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    if (compteur.has(cle)) compteur.set(cle, (compteur.get(cle) ?? 0) + 1);
+  }
+  return mois.map((cle) => ({ mois: cle.charAt(0).toUpperCase() + cle.slice(1), nb: compteur.get(cle) ?? 0 }));
+}
+
 export type RepartitionStatutMission = { statut: MissionStatutType; nb: number };
 
 /** Répartition des missions par statut, toutes périodes confondues — snapshot de l'état actuel de la plateforme. */

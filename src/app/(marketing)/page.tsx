@@ -23,17 +23,16 @@ export default async function Home() {
     if (estAdmin || estModerateur) redirect("/admin");
 
     // Un prestataire connecté ne voit jamais cette page : src/proxy.ts
-    // le redirige plus tôt vers /tableau-de-bord/accueil (avant même
-    // que ce composant ne s'exécute) — voir estRouteReserveeRecruteurs.
-    const { data: profil } = await supabase
-      .from("users")
-      .select("type")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profil?.type === "recruteur_entreprise" || profil?.type === "recruteur_particulier") {
-      redirect("/prestataires");
-    }
+    // le redirige plus tôt vers /prestataire (avant même que ce
+    // composant ne s'exécute) — voir estRouteReserveeRecruteurs.
+    //
+    // Un client (recruteur) connecté, en revanche, DOIT pouvoir atterrir
+    // ici : c'est la landing page, et le logo ProParJour doit toujours y
+    // ramener un client, quel que soit son état de connexion (règle
+    // explicite "CORRECTION UX CRITIQUE" §logo). Rediriger un recruteur
+    // connecté vers /prestataires ici entrait en conflit avec cette
+    // règle — un clic sur le logo semblait "ne rien faire" pour un
+    // client déjà connecté.
   }
 
   return (
@@ -43,8 +42,8 @@ export default async function Home() {
       <SectorsSection />
       <MultiMetiers />
       <StepsSection />
-      <AudienceSplit />
       <VerifyBand />
+      <AudienceSplit />
       <FinalCta />
     </>
   );

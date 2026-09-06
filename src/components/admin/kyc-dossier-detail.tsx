@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, XCircle, Loader2, Eye, Send, ShieldCheck, ShieldAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { AdminButton } from "@/components/admin/ui/button";
+import { AdminInput } from "@/components/admin/ui/input";
+import { AdminBadge, type AdminBadgeTone } from "@/components/admin/ui/badge";
+import { AdminSection } from "@/components/admin/ui/section";
 import { DOCUMENTS_REQUIS, statutAffiche } from "@/config/documents-requis";
 import type { DossierKyc } from "@/lib/admin/kyc";
 import {
@@ -30,14 +30,14 @@ const STATUT_DOC_LABELS: Record<string, string> = {
   refuse: "Refusé",
 };
 
-function Section({ titre, children }: { titre: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-background p-5 shadow-sm">
-      <h2 className="font-heading text-lg font-semibold text-foreground">{titre}</h2>
-      <div className="mt-3">{children}</div>
-    </div>
-  );
-}
+const STATUT_TONE: Record<string, AdminBadgeTone> = {
+  en_attente: "orange",
+  partiel: "orange",
+  valide: "green",
+  refuse: "red",
+};
+
+const DOC_TONE: Record<string, AdminBadgeTone> = { valide: "green", en_attente: "orange", refuse: "red" };
 
 export function KycDossierDetail({ dossier }: { dossier: DossierKyc }) {
   const router = useRouter();
@@ -111,171 +111,180 @@ export function KycDossierDetail({ dossier }: { dossier: DossierKyc }) {
 
   return (
     <div className="space-y-4">
-      <Section titre="Dossier">
+      <AdminSection title="Dossier">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-medium text-foreground">
+            <p className="font-semibold text-[var(--a-ink)]">
               {dossier.user.prenom} {dossier.user.nom}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-[var(--a-text-2)]">
               {METIER_LABELS[dossier.profil.metier]} · {dossier.profil.ville}
               {dossier.user.telephone ? ` · ${dossier.user.telephone}` : ""}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-[var(--a-text-2)]">
               Inscrit le {new Date(dossier.profil.created_at).toLocaleDateString("fr-FR")}
             </p>
             {dossier.profil.numero_carte_cnaps && (
-              <p className="mt-1 text-sm text-foreground">
+              <p className="mt-1 text-[13px] text-[var(--a-ink)]">
                 N° carte CNAPS déclaré : {dossier.profil.numero_carte_cnaps}
               </p>
             )}
           </div>
           <div className="flex items-center gap-2">
             {statut === "valide" ? (
-              <ShieldCheck className="size-6 text-emerald-600 dark:text-emerald-400" />
+              <ShieldCheck className="size-6" style={{ color: "var(--a-badge-green-text)" }} />
             ) : statut === "refuse" ? (
-              <ShieldAlert className="size-6 text-destructive" />
+              <ShieldAlert className="size-6" style={{ color: "var(--a-badge-red-text)" }} />
             ) : (
-              <ShieldAlert className="size-6 text-amber-600 dark:text-amber-400" />
+              <ShieldAlert className="size-6" style={{ color: "var(--a-badge-orange-text)" }} />
             )}
-            <Badge variant="secondary" className="font-normal">
+            <AdminBadge tone={STATUT_TONE[statut] ?? "grey"}>
               {statut === "valide" ? "Validé" : statut === "refuse" ? "Refusé" : statut === "partiel" ? "Partiel" : "En attente"}
-            </Badge>
+            </AdminBadge>
           </div>
         </div>
         {dossier.profil.motif_refus && (
-          <p className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p
+            className="mt-3 rounded-[11px] px-3 py-2 text-[13px]"
+            style={{ backgroundColor: "var(--a-badge-red-bg)", color: "var(--a-badge-red-text)" }}
+          >
             Motif du refus : {dossier.profil.motif_refus}
           </p>
         )}
-      </Section>
+      </AdminSection>
 
-      <Section titre="Documents">
+      <AdminSection title="Documents">
         {requis.length === 0 && (
-          <p className="text-sm text-muted-foreground">Aucun document requis pour ce métier pour l&apos;instant.</p>
+          <p className="text-[13px] text-[var(--a-text-3)]">Aucun document requis pour ce métier pour l&apos;instant.</p>
         )}
         <div className="space-y-3">
           {requis.map((r) => {
             const doc = dossier.justificatifs.find((j) => j.type_document === r.type);
             return (
-              <div key={r.type} className="rounded-lg border border-border p-3">
+              <div key={r.type} className="rounded-[11px] border border-[var(--a-border-strong)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-foreground">{r.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {doc ? STATUT_DOC_LABELS[doc.statut] : "Non fourni"}
-                    </p>
+                    <p className="text-[13px] font-semibold text-[var(--a-ink)]">{r.label}</p>
+                    {doc ? (
+                      <div className="mt-1">
+                        <AdminBadge tone={DOC_TONE[doc.statut] ?? "grey"}>{STATUT_DOC_LABELS[doc.statut]}</AdminBadge>
+                      </div>
+                    ) : (
+                      <p className="text-[12px] text-[var(--a-text-3)]">Non fourni</p>
+                    )}
                   </div>
                   {doc && (
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => voirDocument(doc.storage_path)}>
+                      <AdminButton size="sm" variant="secondary" onClick={() => voirDocument(doc.storage_path)}>
                         <Eye className="size-3.5" />
                         Voir
-                      </Button>
+                      </AdminButton>
                       {doc.statut !== "valide" && (
-                        <Button
+                        <AdminButton
                           size="sm"
-                          className="rounded-full"
+                          variant="success"
                           disabled={envoi === doc.id}
                           onClick={() => agirSurJustificatif(doc.id, "valider")}
                         >
                           {envoi === doc.id ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
                           Valider
-                        </Button>
+                        </AdminButton>
                       )}
                       {doc.statut !== "refuse" && (
-                        <Button
+                        <AdminButton
                           size="sm"
-                          variant="outline"
-                          className="rounded-full text-destructive hover:text-destructive"
+                          variant="danger"
                           disabled={envoi === doc.id}
                           onClick={() => setAfficherRefusDoc(afficherRefusDoc === doc.id ? null : doc.id)}
                         >
                           <XCircle className="size-3.5" />
                           Refuser
-                        </Button>
+                        </AdminButton>
                       )}
                     </div>
                   )}
                 </div>
                 {doc?.motif_refus && doc.statut === "refuse" && (
-                  <p className="mt-2 text-xs text-destructive">Motif : {doc.motif_refus}</p>
+                  <p className="mt-2 text-[12px]" style={{ color: "var(--a-badge-red-text)" }}>
+                    Motif : {doc.motif_refus}
+                  </p>
                 )}
                 {afficherRefusDoc === doc?.id && (
                   <div className="mt-2 flex gap-2">
-                    <Input
+                    <AdminInput
                       value={motifsDoc[doc.id] ?? ""}
                       onChange={(e) => setMotifsDoc((prev) => ({ ...prev, [doc.id]: e.target.value }))}
                       placeholder="Motif du refus"
                       className="flex-1"
                     />
-                    <Button size="sm" variant="outline" className="rounded-full text-destructive" onClick={() => agirSurJustificatif(doc.id, "refuser")}>
+                    <AdminButton size="sm" variant="danger" onClick={() => agirSurJustificatif(doc.id, "refuser")}>
                       Confirmer
-                    </Button>
+                    </AdminButton>
                   </div>
                 )}
               </div>
             );
           })}
         </div>
-      </Section>
+      </AdminSection>
 
-      <Section titre="Demander un document">
+      <AdminSection title="Demander un document">
         {dossier.documentDejaDemande && (
-          <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">Déjà contacté à ce sujet.</p>
+          <p className="mb-2 text-[12px]" style={{ color: "var(--a-badge-orange-text)" }}>
+            Déjà contacté à ce sujet.
+          </p>
         )}
         {afficherDemande ? (
           <div className="flex gap-2">
-            <Input
+            <AdminInput
               value={messageDemande}
               onChange={(e) => setMessageDemande(e.target.value)}
               placeholder="Ex : merci de fournir une carte CNAPS lisible"
               className="flex-1"
             />
-            <Button size="sm" className="rounded-full" disabled={envoi === "demande"} onClick={envoyerDemande}>
+            <AdminButton size="sm" variant="secondary" disabled={envoi === "demande"} onClick={envoyerDemande}>
               {envoi === "demande" ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
               Envoyer
-            </Button>
+            </AdminButton>
           </div>
         ) : (
-          <Button size="sm" variant="outline" className="rounded-full" onClick={() => setAfficherDemande(true)}>
+          <AdminButton size="sm" variant="secondary" onClick={() => setAfficherDemande(true)}>
             <Send className="size-3.5" />
             Demander un document
-          </Button>
+          </AdminButton>
         )}
-      </Section>
+      </AdminSection>
 
-      <Section titre="Décision">
+      <AdminSection title="Décision">
         <div className="flex flex-wrap gap-2">
-          <Button className="rounded-full" disabled={envoi === "dossier"} onClick={() => agirSurDossier("valider")}>
+          <AdminButton variant="success" disabled={envoi === "dossier"} onClick={() => agirSurDossier("valider")}>
             {envoi === "dossier" ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
             Valider le dossier
-          </Button>
-          <Button
-            variant="outline"
-            className={cn("rounded-full text-destructive hover:text-destructive")}
-            disabled={envoi === "dossier"}
-            onClick={() => setAfficherRefusDossier((v) => !v)}
-          >
+          </AdminButton>
+          <AdminButton variant="danger" disabled={envoi === "dossier"} onClick={() => setAfficherRefusDossier((v) => !v)}>
             <XCircle className="size-3.5" />
             Refuser le dossier
-          </Button>
+          </AdminButton>
         </div>
         {afficherRefusDossier && (
           <div className="mt-3 flex gap-2">
-            <Input
+            <AdminInput
               value={motifRefusDossier}
               onChange={(e) => setMotifRefusDossier(e.target.value)}
               placeholder="Motif du refus"
               className="flex-1"
             />
-            <Button size="sm" variant="outline" className="rounded-full text-destructive" onClick={() => agirSurDossier("refuser")}>
+            <AdminButton size="sm" variant="danger" onClick={() => agirSurDossier("refuser")}>
               Confirmer le refus
-            </Button>
+            </AdminButton>
           </div>
         )}
-        {erreur && <p className="mt-2 text-sm text-destructive">{erreur}</p>}
-      </Section>
+        {erreur && (
+          <p className="mt-2 text-[13px]" style={{ color: "var(--a-badge-red-text)" }}>
+            {erreur}
+          </p>
+        )}
+      </AdminSection>
     </div>
   );
 }

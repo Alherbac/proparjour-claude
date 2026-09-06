@@ -3,21 +3,31 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Briefcase, MapPin, CalendarDays, Euro, Send, Search, ArrowRight } from "lucide-react";
+import { Briefcase, Send, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { METIERS, type MetierId } from "@/config/metiers";
 import { postulerOffre } from "@/app/actions/offres";
 import { montantMission } from "@/lib/duree";
+import { dateCourteFr } from "@/lib/date-fr";
 import { cn } from "@/lib/utils";
 import type { OffresRow } from "@/lib/supabase/database.types";
 
 const STATUT_CANDIDATURE_LABEL: Record<string, string> = {
   en_attente: "Candidature envoyée",
+  en_discussion: "Retenue — en discussion",
   acceptee: "Candidature acceptée",
   refusee: "Candidature refusée",
 };
+
+function publieeDepuis(iso: string): string {
+  const heures = Math.round((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60));
+  if (heures < 1) return "à l'instant";
+  if (heures < 24) return `il y a ${heures} h`;
+  const jours = Math.round(heures / 24);
+  return jours === 1 ? "hier" : `il y a ${jours} j`;
+}
 
 function OffreCard({
   offre,
@@ -46,65 +56,44 @@ function OffreCard({
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-background p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <Link href={`/tableau-de-bord/offres/${offre.id}`} className="font-medium text-foreground hover:underline">
+    <div className="flex h-full flex-col gap-3 rounded-2xl border border-border bg-background p-[18px] transition-colors hover:border-foreground/30">
+      <div className="flex flex-wrap items-center gap-2.5">
+        {postulable ? (
+          <Link href={`/prestataire/opportunites/${offre.id}`} className="text-[15.5px] font-semibold text-foreground hover:underline">
             {offre.titre}
           </Link>
-          <p className="text-sm text-muted-foreground">{metier?.filiere}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="flex items-center gap-1 text-sm font-medium text-primary">
-            <Euro className="size-3.5" />
-            {total} € au total
-          </p>
-          <p className="text-xs text-muted-foreground">{offre.tarif_horaire} € / heure</p>
-        </div>
+        ) : (
+          <span className="text-[15.5px] font-semibold text-foreground">{offre.titre}</span>
+        )}
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">{publieeDepuis(offre.created_at)}</span>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <MapPin className="size-3" />
-          {offre.ville}
+      <p className="text-[13.5px] text-muted-foreground">
+        {metier?.filiere} · {offre.ville} · {dateCourteFr(offre.date_mission)} · {offre.heure_debut.slice(0, 5)}–{offre.heure_fin.slice(0, 5)}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-1 text-[11.5px] text-foreground/80">
+          {total} € au total
         </span>
-        <span className="flex items-center gap-1">
-          <CalendarDays className="size-3" />
-          {offre.date_mission} · {offre.heure_debut}–{offre.heure_fin}
+        <span className="rounded-full border border-border bg-secondary/40 px-2.5 py-1 text-[11.5px] text-foreground/80">
+          {offre.tarif_horaire} € / heure
         </span>
       </div>
 
-      <p className="mt-3 text-sm text-muted-foreground">{offre.description}</p>
+      <div className="flex-1" />
 
-      {postulable && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {statut ? (
-            <Badge variant="secondary" className="font-normal">
-              {STATUT_CANDIDATURE_LABEL[statut]}
-            </Badge>
-          ) : (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                className="rounded-full"
-                disabled={isPending}
-                onClick={postuler}
-              >
-                <Send className="size-3.5" />
-                Postuler
-              </Button>
-              <Link
-                href={`/tableau-de-bord/offres/${offre.id}`}
-                className="flex items-center gap-1 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-              >
-                Voir le détail
-                <ArrowRight className="size-3.5" />
-              </Link>
-            </>
-          )}
-        </div>
-      )}
+      {postulable &&
+        (statut ? (
+          <Badge variant="secondary" className="w-fit font-normal">
+            {STATUT_CANDIDATURE_LABEL[statut]}
+          </Badge>
+        ) : (
+          <Button type="button" className="w-full rounded-xl" disabled={isPending} onClick={postuler}>
+            <Send className="size-3.5" />
+            Candidater
+          </Button>
+        ))}
     </div>
   );
 }
@@ -160,7 +149,7 @@ export function OffresBrowser({
               className={cn(
                 "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                 filtre === "mon-metier"
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-foreground text-background"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -172,7 +161,7 @@ export function OffresBrowser({
               className={cn(
                 "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                 filtre === "tous"
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-foreground text-background"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -202,7 +191,7 @@ export function OffresBrowser({
           </p>
         </div>
       ) : (
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 grid items-stretch gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))" }}>
           {resultats.map((offre) => (
             <OffreCard
               key={offre.id}

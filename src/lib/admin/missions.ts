@@ -142,6 +142,41 @@ export async function getMissionsAdmin(
   return { missions: resultats, total, page, totalPages: Math.max(1, Math.ceil(total / MISSIONS_PAR_PAGE)) };
 }
 
+export type StatsMissionsAdmin = {
+  enCours: number;
+  aArbitrer: number;
+  sequestreMontant: number;
+  sequestreCount: number;
+  litigesCount: number;
+  litigeDelaiMoyenJours: number | null;
+};
+
+/** Les 3 statistiques d'en-tête (§5.4) — agrégats réels sur missions/paiements. */
+export async function getStatistiquesMissionsAdmin(): Promise<StatsMissionsAdmin> {
+  const admin = createAdminClient();
+  const [{ count: enCours }, { data: sequestre }, { data: litiges }, { count: echecs }, { count: rembourses }] = await Promise.all([
+    admin.from("missions").select("*", { count: "exact", head: true }).in("statut", ["confirmee", "en_cours"]),
+    admin.from("paiements").select("montant").eq("statut", "sequestre"),
+    admin.from("missions").select("date_mission").eq("statut", "litige"),
+    admin.from("paiements").select("*", { count: "exact", head: true }).eq("statut", "echec"),
+    admin.from("paiements").select("*", { count: "exact", head: true }).eq("statut", "rembourse"),
+  ]);
+
+  const maintenant = Date.now();
+  const delais = (litiges ?? []).map((m) => Math.floor((maintenant - new Date(m.date_mission).getTime()) / 86_400_000));
+
+  return {
+    enCours: enCours ?? 0,
+    aArbitrer: (echecs ?? 0) + (rembourses ?? 0),
+    sequestreMontant: Math.round((sequestre ?? []).reduce((s, p) => s + Number(p.montant), 0) * 100) / 100,
+    sequestreCount: (sequestre ?? []).length,
+    litigesCount: (litiges ?? []).length,
+    litigeDelaiMoyenJours: delais.length > 0 ? Math.round(delais.reduce((s, j) => s + j, 0) / delais.length) : null,
+  };
+}
+
+export { referenceMission } from "@/lib/admin/reference";
+
 export async function getMissionAdmin(missionId: string): Promise<MissionAdminRow | null> {
   const admin = createAdminClient();
   const { data: mission } = await admin.from("missions").select("*").eq("id", missionId).maybeSingle();

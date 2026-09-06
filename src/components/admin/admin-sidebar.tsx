@@ -1,153 +1,144 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Radar,
-  LayoutDashboard,
-  Users,
-  ShieldCheck,
-  Briefcase,
-  Megaphone,
-  MessageSquare,
-  Wallet,
-  Percent,
-  FileText,
-  BarChart3,
-  Target,
-  MapPin,
-  ScrollText,
-  UserX,
-  Download,
-  Eye,
-  Settings,
-  Search,
-  Store,
-  ChevronDown,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NAV_GROUPES, NAV_AUTRES, type NavBadgeKey } from "@/components/admin/shell/admin-nav-config";
+import { signOutAction } from "@/app/actions/auth";
 
-type ModuleDef = {
-  href: string;
-  label: string;
-  icon: typeof Radar;
-  badgeKey?: keyof AdminBadges;
-};
+export type AdminBadges = Partial<Record<NavBadgeKey, number>>;
 
-export type AdminBadges = {
-  validations?: number;
-  messages?: number;
-  pilotage?: number;
-  suppressions?: number;
-};
+function estActif(pathname: string, href: string) {
+  if (href === "/admin") return pathname === "/admin";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
-const GROUPES: { titre: string; modules: ModuleDef[] }[] = [
-  {
-    titre: "Pilotage",
-    modules: [{ href: "/admin/pilotage", label: "Pilotage & Alertes", icon: Radar, badgeKey: "pilotage" }],
-  },
-  {
-    titre: "Principal",
-    modules: [
-      { href: "/admin", label: "Tableau de bord", icon: LayoutDashboard },
-      { href: "/admin/utilisateurs", label: "Utilisateurs", icon: Users },
-      { href: "/admin/validations", label: "Validation", icon: ShieldCheck, badgeKey: "validations" },
-      { href: "/admin/missions", label: "Missions", icon: Briefcase },
-      { href: "/admin/offres", label: "Offres", icon: Megaphone },
-      { href: "/admin/annuaire-prestataires", label: "Annuaire prestataires", icon: Search },
-      { href: "/admin/marche-offres", label: "Marché des offres", icon: Store },
-      { href: "/admin/messages", label: "Messages", icon: MessageSquare, badgeKey: "messages" },
-    ],
-  },
-  {
-    titre: "Finances",
-    modules: [
-      { href: "/admin/versements", label: "Versements", icon: Wallet },
-      { href: "/admin/commissions", label: "Commissions", icon: Percent },
-      { href: "/admin/factures", label: "Factures", icon: FileText },
-    ],
-  },
-  {
-    titre: "Analyse",
-    modules: [
-      { href: "/admin/stats", label: "Statistiques", icon: BarChart3 },
-      { href: "/admin/kpis", label: "KPI stratégiques", icon: Target },
-    ],
-  },
-  {
-    titre: "Outils",
-    modules: [
-      { href: "/admin/villes", label: "Villes / zones", icon: MapPin },
-      { href: "/admin/cgu", label: "CGU", icon: ScrollText },
-      { href: "/admin/suppressions", label: "Suppressions", icon: UserX, badgeKey: "suppressions" },
-      { href: "/admin/export", label: "Export données", icon: Download },
-      { href: "/admin/simulation", label: "Simulation", icon: Eye },
-      { href: "/admin/parametres", label: "Paramètres", icon: Settings },
-    ],
-  },
-];
+function NavLink({ href, label, badge, actif }: { href: string; label: string; badge?: number; actif: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2.5 rounded-[9px] px-[10px] py-[9px] text-[12.5px] font-semibold transition-colors",
+        actif ? "bg-[var(--a-nav-active)] text-white" : "text-[var(--a-nav-text)] hover:bg-[var(--a-nav-active)]/60 hover:text-white",
+      )}
+      style={{ fontFamily: "var(--a-font-display)" }}
+    >
+      <span
+        className={cn("size-[5px] shrink-0 rounded-full", actif ? "bg-[var(--a-accent)]" : "bg-[var(--a-nav-dot)]")}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {Boolean(badge) && (
+        <span
+          className="shrink-0 rounded-full border px-[7px] py-[1px] text-[10.5px] font-bold"
+          style={{
+            background: "rgba(224,90,58,0.18)",
+            borderColor: "rgba(224,90,58,0.34)",
+            color: "#f0a48d",
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </Link>
+  );
+}
 
-export function AdminSidebar({ badges = {} }: { badges?: AdminBadges }) {
+export function AdminSidebar({
+  badges = {},
+  nomComplet,
+  roleLabel,
+  onOuvrirSimulation,
+}: {
+  badges?: AdminBadges;
+  nomComplet: string;
+  roleLabel: string;
+  onOuvrirSimulation: () => void;
+}) {
   const pathname = usePathname();
-  const [replies, setReplies] = useState<Record<string, boolean>>({});
-
-  function toggle(titre: string) {
-    setReplies((prev) => ({ ...prev, [titre]: !prev[titre] }));
-  }
+  const initiales = (nomComplet.trim().charAt(0) || "A").toUpperCase();
 
   return (
-    <nav className="flex h-full w-64 shrink-0 flex-col overflow-y-auto bg-neutral-950 py-4 text-neutral-300">
-      <div className="px-5 pb-4">
-        <span className="font-heading text-lg font-semibold text-white">
-          Pro<span className="text-primary">Par</span>Jour
-        </span>
-        <p className="mt-0.5 text-xs text-neutral-500">Back-office</p>
+    <aside
+      className="flex h-full w-[236px] shrink-0 flex-col"
+      style={{ background: "var(--a-nav-bg)" }}
+    >
+      <div className="shrink-0 px-4 pt-5 pb-4">
+        <Link href="/" className="text-[17px] font-extrabold text-white" style={{ fontFamily: "var(--a-font-display)" }}>
+          Pro<span style={{ color: "var(--a-accent)" }}>Par</span>Jour
+        </Link>
+        <p className="mt-0.5 text-[11px] text-[var(--a-nav-text)]">Back-office</p>
       </div>
 
-      {GROUPES.map((groupe) => {
-        const replie = replies[groupe.titre] ?? false;
-        return (
-          <div key={groupe.titre} className="px-2 pb-1">
-            <button
-              type="button"
-              onClick={() => toggle(groupe.titre)}
-              className="flex w-full items-center justify-between px-3 py-1.5 text-xs font-semibold tracking-wide text-neutral-500 uppercase hover:text-neutral-300"
+      <nav className="a-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        {NAV_GROUPES.map((groupe) => (
+          <div key={groupe.titre} className="mb-4">
+            <p
+              className="mb-1.5 px-[10px] text-[9.5px] font-bold tracking-[0.16em] text-[var(--a-text-2)] uppercase"
+              style={{ fontFamily: "var(--a-font-display)" }}
             >
               {groupe.titre}
-              <ChevronDown className={cn("size-3.5 transition-transform", replie && "-rotate-90")} />
-            </button>
-
-            {!replie && (
-              <div className="flex flex-col gap-0.5">
-                {groupe.modules.map((module) => {
-                  const actif = module.href === "/admin" ? pathname === "/admin" : pathname.startsWith(module.href);
-                  const Icon = module.icon;
-                  const badge = module.badgeKey ? badges[module.badgeKey] : undefined;
-                  return (
-                    <Link
-                      key={module.href}
-                      href={module.href}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        actif ? "bg-primary text-primary-foreground" : "hover:bg-white/5 hover:text-white",
-                      )}
-                    >
-                      <Icon className="size-4 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate">{module.label}</span>
-                      {Boolean(badge) && (
-                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold text-white">
-                          {badge}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {groupe.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  badge={item.badgeKey ? badges[item.badgeKey] : undefined}
+                  actif={estActif(pathname, item.href)}
+                />
+              ))}
+            </div>
           </div>
-        );
-      })}
-    </nav>
+        ))}
+
+        <div className="mt-1 border-t pt-3" style={{ borderColor: "var(--a-nav-sep)" }}>
+          <p
+            className="mb-1.5 px-[10px] text-[9.5px] font-bold tracking-[0.16em] text-[var(--a-text-2)] uppercase"
+            style={{ fontFamily: "var(--a-font-display)" }}
+          >
+            {NAV_AUTRES.titre}
+          </p>
+          <div className="flex flex-col gap-0.5">
+            {NAV_AUTRES.items.map((item) => (
+              <NavLink key={item.href} href={item.href} label={item.label} actif={estActif(pathname, item.href)} />
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      <div className="shrink-0 border-t px-3 py-3" style={{ borderColor: "var(--a-nav-sep)" }}>
+        <button
+          type="button"
+          onClick={onOuvrirSimulation}
+          className="mb-3 flex w-full items-center gap-2 rounded-[9px] border px-[10px] py-[9px] text-left text-[12px] font-semibold text-[var(--a-nav-text)] transition-colors hover:text-white"
+          style={{ borderColor: "var(--a-nav-field-border)", fontFamily: "var(--a-font-display)" }}
+        >
+          <span className="size-[7px] shrink-0 rounded-full" style={{ background: "var(--a-orange)" }} aria-hidden />
+          Mode simulation
+        </button>
+        <div className="flex items-center gap-2.5 px-[2px]">
+          <span
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white"
+            style={{ background: "var(--a-accent)", fontFamily: "var(--a-font-display)" }}
+          >
+            {initiales}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[12.5px] font-semibold text-white">{nomComplet}</p>
+            <p className="text-[10.5px] text-[var(--a-nav-text)]">{roleLabel}</p>
+          </div>
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              className="shrink-0 text-[10.5px] font-semibold text-[var(--a-nav-text)] underline decoration-dotted underline-offset-2 hover:text-white"
+            >
+              Quitter
+            </button>
+          </form>
+        </div>
+      </div>
+    </aside>
   );
 }

@@ -4,6 +4,9 @@ import { requireAdminSession } from "@/lib/admin/auth";
 import { rechercherPrestataires } from "@/lib/recherche";
 import { ResultatsPrestataires } from "@/components/prestataire/resultats-prestataires";
 import { METIERS, type MetierId } from "@/config/metiers";
+import { AdminH1 } from "@/components/admin/ui/section";
+import { AdminInput } from "@/components/admin/ui/input";
+import { AdminButton } from "@/components/admin/ui/button";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Annuaire prestataires — Admin ProParJour" };
@@ -54,22 +57,25 @@ export default async function AdminAnnuairePage({
   const currentParams: Params = { metier, ville, q };
 
   return (
-    <div>
-      <h1 className="font-display-serif text-2xl text-foreground">Annuaire prestataires</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {total} prestataire{total !== 1 ? "s" : ""} vérifié{total !== 1 ? "s" : ""} — vue de consultation,
-        identique à la recherche recruteur.
-      </p>
+    <div className="space-y-4">
+      <div>
+        <AdminH1>Annuaire prestataires</AdminH1>
+        <p className="mt-1 text-[13px] text-[var(--a-text-2)]">
+          {total} prestataire{total !== 1 ? "s" : ""} vérifié{total !== 1 ? "s" : ""} — vue de consultation,
+          identique à la recherche recruteur.
+        </p>
+      </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         <Link
           href={buildHref(currentParams, { metier: undefined })}
           className={cn(
-            "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+            "rounded-[9px] border px-3 py-[7px] text-[12px] font-semibold transition-colors",
             !metier
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border bg-background text-foreground hover:border-primary/40",
+              ? "border-[var(--a-accent)] bg-[var(--a-accent)] text-white"
+              : "border-[var(--a-border-strong)] text-[var(--a-ink)] hover:border-[var(--a-accent)]/50",
           )}
+          style={{ fontFamily: "var(--a-font-display)" }}
         >
           Tous les métiers
         </Link>
@@ -78,57 +84,46 @@ export default async function AdminAnnuairePage({
             key={m.id}
             href={buildHref(currentParams, { metier: m.id })}
             className={cn(
-              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+              "rounded-[9px] border px-3 py-[7px] text-[12px] font-semibold transition-colors",
               metier === m.id
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border bg-background text-foreground hover:border-primary/40",
+                ? "border-[var(--a-accent)] bg-[var(--a-accent)] text-white"
+                : "border-[var(--a-border-strong)] text-[var(--a-ink)] hover:border-[var(--a-accent)]/50",
             )}
+            style={{ fontFamily: "var(--a-font-display)" }}
           >
             {m.filiere}
           </Link>
         ))}
       </div>
 
-      <form method="get" className="mt-3 flex flex-wrap gap-2">
+      <form method="get" className="flex flex-wrap gap-2">
         {metier && <input type="hidden" name="metier" value={metier} />}
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Mot-clé de spécialité..."
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
-        />
-        <input
-          name="ville"
-          defaultValue={ville ?? ""}
-          placeholder="Ville..."
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
+        <AdminInput name="q" defaultValue={q ?? ""} placeholder="Mot-clé de spécialité..." className="w-auto" />
+        <AdminInput name="ville" defaultValue={ville ?? ""} placeholder="Ville..." className="w-auto" />
+        <AdminButton type="submit" variant="primary">
           Rechercher
-        </button>
+        </AdminButton>
       </form>
 
       {resultats.length === 0 ? (
-        <p className="mt-8 text-sm text-muted-foreground">Aucun prestataire ne correspond à ces critères.</p>
+        <p className="text-[13px] text-[var(--a-text-3)]">Aucun prestataire ne correspond à ces critères.</p>
       ) : (
         <ResultatsPrestataires resultats={resultats} enMissionIds={[...enMissionIds]} />
       )}
 
       {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
             <Link
               key={p}
               href={buildHref(currentParams, { page: p === 1 ? undefined : String(p) })}
               className={cn(
-                "flex size-9 items-center justify-center rounded-full border text-sm transition-colors",
+                "flex size-9 items-center justify-center rounded-[9px] border text-[13px] font-semibold transition-colors",
                 p === page
-                  ? "border-primary bg-primary/10 font-medium text-primary"
-                  : "border-border text-foreground hover:border-primary/40",
+                  ? "border-[var(--a-accent)] bg-[var(--a-accent)] text-white"
+                  : "border-[var(--a-border-strong)] text-[var(--a-ink)] hover:border-[var(--a-accent)]/50",
               )}
+              style={{ fontFamily: "var(--a-font-display)" }}
             >
               {p}
             </Link>

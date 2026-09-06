@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { creerNotification } from "@/lib/notifications";
-import { creerMessageDevis } from "@/lib/messages";
+import { creerMessageSysteme } from "@/lib/messages";
 import { montantMission } from "@/lib/duree";
 import { getTauxCommission } from "@/lib/commission";
 import { METIERS } from "@/config/metiers";
@@ -90,14 +90,14 @@ export async function publierOffre(
           type: "offre_correspondante",
           titre: "Nouvelle offre de mission",
           contenu: `${input.titre} — ${input.ville}, le ${input.dateMission}`,
-          lien: "/tableau-de-bord/offres",
+          lien: "/prestataire/opportunites",
         }),
         envoyerEmailNouvelleOffre(p.user_id, input.titre.trim(), `${input.ville}, le ${input.dateMission}`),
       ]),
     ),
   );
 
-  revalidatePath("/tableau-de-bord/mes-offres");
+  revalidatePath("/client/candidatures");
   return { success: true, data: { offreId: offre.id } };
 }
 
@@ -241,7 +241,7 @@ export async function publierDemandeGlobale(
             type: "offre_correspondante",
             titre: "Nouvelle offre de mission",
             contenu: sb ? `${input.titre} — ${sb.ville}, le ${sb.dateMission}` : input.titre,
-            lien: "/tableau-de-bord/offres",
+            lien: "/prestataire/opportunites",
           }),
           envoyerEmailNouvelleOffre(userId, input.titre.trim(), detail),
         ]),
@@ -249,7 +249,7 @@ export async function publierDemandeGlobale(
     }),
   );
 
-  revalidatePath("/tableau-de-bord/mes-offres");
+  revalidatePath("/client/candidatures");
   return { success: true, data: { demandeId: demande.id, offreIds: offresCreees.map((o) => o.id) } };
 }
 
@@ -297,10 +297,10 @@ export async function postulerOffre(offreId: string, message?: string): Promise<
     type: "candidature_recue",
     titre: "Nouvelle candidature reçue",
     contenu: offre.titre,
-    lien: "/tableau-de-bord/mes-offres",
+    lien: "/client/candidatures",
   });
 
-  revalidatePath("/tableau-de-bord/offres");
+  revalidatePath("/prestataire/opportunites");
   return { success: true };
 }
 
@@ -339,9 +339,17 @@ export async function repondreCandidature(
     return { success: false, error: "Cette candidature a déjà reçu une réponse." };
   }
 
+  // "Retenir" (reponse === "acceptee") n'est PAS une acceptation
+  // commerciale — ouvrir la conversation avec un candidat ne
+  // l'engage pas. La candidature passe à "en_discussion", jamais
+  // directement à "acceptee" : ce dernier statut n'est écrit qu'au
+  // paiement confirmé du devis (voir confirmerPaiementMissionAvecIntent,
+  // actions/paiement-mission.ts) — seule source de vérité de
+  // l'engagement réel, cf. "PROMPT MAJEUR" §1-2.
+  const statutEcrit = reponse === "acceptee" ? "en_discussion" : reponse;
   const { error } = await supabase
     .from("candidatures")
-    .update({ statut: reponse })
+    .update({ statut: statutEcrit })
     .eq("id", candidatureId);
   if (error) {
     return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer votre réponse pour le moment.") };
@@ -368,10 +376,10 @@ export async function repondreCandidature(
         type: "candidature_refusee",
         titre: "Candidature déclinée",
         contenu: offre?.titre ?? undefined,
-        lien: "/tableau-de-bord/offres",
+        lien: "/prestataire/opportunites",
       });
     }
-    revalidatePath("/tableau-de-bord/mes-offres");
+    revalidatePath("/client/candidatures");
     return { success: true, data: { missionId: null } };
   }
 
@@ -405,33 +413,78 @@ export async function repondreCandidature(
     }
     missionId = missionIdCreee;
 
-    await creerMessageDevis({
+    // Retenir une candidature ouvre la conversation — ce n'est PAS
+    // une acceptation commerciale : aucun devis n'est envoyé
+    // automatiquement. C'est au prestataire de proposer le sien (voir
+    // envoyerDevis, actions/missions.ts), après discussion. Correction
+    // UX critique du parcours candidature : avant ce chantier, un
+    // devis payable était généré ici, au nom du CLIENT, dès ce clic —
+    // ce qui court-circuitait entièrement l'échange et le consentement
+    // du professionnel sur les termes exacts.
+    await creerMessageSysteme({
       missionId,
       expediteurId: user.id,
       destinataireId: profil.user_id,
-      devis: {
-        prestation: offre.titre,
-        date: offre.date_mission,
-        heureDebut: offre.heure_debut,
-        heureFin: offre.heure_fin,
-        lieu: offre.ville,
-        tarifHoraire: offre.tarif_horaire,
-        montantTotal,
-      },
+      contenu: "✅ Votre candidature a été retenue — vous pouvez échanger, puis envoyer votre devis.",
     });
 
     await creerNotification({
       userId: profil.user_id,
       type: "candidature_acceptee",
-      titre: "Candidature acceptée",
-      contenu: offre.titre,
+      titre: "Candidature retenue",
+      contenu: `${offre.titre} — échangez avec le client puis envoyez votre devis.`,
       lien: `/missions/${missionId}`,
       missionId,
     });
   }
 
-  revalidatePath("/tableau-de-bord/mes-offres");
+  revalidatePath("/client/candidatures");
   return { success: true, data: { missionId } };
+}
+
+/**
+ * "Réintégrer" une candidature écartée — dossier design, "Candidatures
+ * reçues" (état "Écartée"). Ramène simplement le statut à "en_attente"
+ * pour que le client puisse reconsidérer ; ne fait rien de plus (pas
+ * de notification, l'écart initial n'en avait pas fait naître non
+ * plus dans l'autre sens).
+ */
+export async function reintegrerCandidature(candidatureId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const { data: candidature } = await supabase
+    .from("candidatures")
+    .select("id, offre_id, statut")
+    .eq("id", candidatureId)
+    .maybeSingle();
+  if (!candidature) {
+    return { success: false, error: "Candidature introuvable." };
+  }
+  if (candidature.statut !== "refusee") {
+    return { success: false, error: "Seule une candidature écartée peut être réintégrée." };
+  }
+
+  const { data: offre } = await supabase.from("offres").select("recruteur_id, statut").eq("id", candidature.offre_id).maybeSingle();
+  if (!offre || offre.recruteur_id !== user.id) {
+    return { success: false, error: "Offre introuvable." };
+  }
+  if (offre.statut !== "publiee") {
+    return { success: false, error: "Cette offre n'accepte plus de candidatures." };
+  }
+
+  const { error } = await supabase.from("candidatures").update({ statut: "en_attente" }).eq("id", candidatureId);
+  if (error) {
+    return { success: false, error: traduireErreurDb(error, "Impossible de réintégrer cette candidature pour le moment.") };
+  }
+
+  revalidatePath("/client/candidatures");
+  return { success: true };
 }
 
 export type ModifierOffreInput = {
@@ -514,7 +567,7 @@ export async function modifierOffre(offreId: string, input: ModifierOffreInput):
     return { success: false, error: traduireErreurDb(error, "Impossible de modifier cette offre pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/mes-offres");
+  revalidatePath("/client/candidatures");
   return { success: true };
 }
 
@@ -569,13 +622,13 @@ export async function cloturerOffre(offreId: string): Promise<ActionResult> {
           type: "offre_cloturee",
           titre: "Offre clôturée",
           contenu: offre?.titre ?? undefined,
-          lien: "/tableau-de-bord/offres",
+          lien: "/prestataire/opportunites",
         }),
       ),
     );
   }
 
-  revalidatePath("/tableau-de-bord/mes-offres");
+  revalidatePath("/client/candidatures");
   return { success: true };
 }
 
@@ -604,6 +657,6 @@ export async function supprimerOffre(offreId: string): Promise<ActionResult> {
     return { success: false, error: "Échec de la suppression — réessayez ou contactez le support." };
   }
 
-  revalidatePath("/tableau-de-bord/mes-offres");
+  revalidatePath("/client/candidatures");
   return { success: true };
 }

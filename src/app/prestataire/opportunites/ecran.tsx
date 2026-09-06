@@ -84,7 +84,7 @@ export function EcranOpportunites({
                   <span className="text-[15px] text-[#1A1917]" style={{ fontFamily: "var(--font-instrument-serif)" }}>
                     {remuneration} €
                   </span>
-                  <Link href={`/tableau-de-bord/offres/${offre.id}`}>
+                  <Link href={`/prestataire/opportunites/${offre.id}`}>
                     <DashButton variant={dejaCandidate ? "secondaire" : "plein"} disabled={dejaCandidate}>
                       {dejaCandidate ? "Déjà candidaté" : "Candidater"}
                     </DashButton>

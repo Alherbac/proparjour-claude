@@ -20,12 +20,17 @@ import { cn } from "@/lib/utils";
  * 1, §5. Réutilise telles quelles les fonctions de lib/besoin.ts
  * (aucun second moteur de décomposition ici) et la persistance de
  * brouillon existante (sauvegarderBesoin/lireBesoin), partagée avec
- * BesoinCapture sur /prestataires — un brouillon commencé ici est
- * retrouvé là-bas. Les deux CTA de l'étape "Voici ce que nous avons
- * compris" renvoient tous les deux vers /prestataires?mode=publier,
- * qui héberge déjà l'écran complet avec ses deux vraies issues
- * (publication directe / sélection manuelle) — pas de second moteur
- * de matching/publication dupliqué ici.
+ * BesoinCapture sur /publier-une-offre — un brouillon commencé ici est
+ * retrouvé là-bas.
+ *
+ * Deux parcours strictement séparés (README §8/§11,
+ * ÉCLAIRCISSEMENT-DEUX-PARCOURS.txt) : l'onglet "Rechercher un
+ * professionnel" mène aux résultats de recherche (/prestataires,
+ * parcours A) ; l'onglet "Publier mon besoin" mène uniquement à
+ * /publier-une-offre (parcours B) — jamais l'inverse, et jamais les
+ * deux depuis le même écran. Le CTA de l'étape "Voici ce que nous
+ * avons compris", côté "Publier mon besoin", ne propose donc aucune
+ * bascule vers un catalogue de prestataires.
  */
 
 const FAMILLES = [
@@ -207,9 +212,14 @@ export function HeroSearchBar() {
     });
   }
 
-  function allerVersParcours() {
-    const params = new URLSearchParams({ mode: "publier", q: besoin.trim() });
-    router.push(`/prestataires?${params.toString()}`);
+  // Route dédiée du parcours B (README §8/§11) — jamais /prestataires,
+  // qui n'héberge que les résultats de recherche du parcours A. Ce
+  // bouton est le seul CTA du bloc "Voici ce que nous avons compris"
+  // lorsqu'on vient de l'onglet "Publier mon besoin" : aucune bascule
+  // vers un catalogue de prestataires n'est proposée ici.
+  function allerVersPublication() {
+    const params = new URLSearchParams({ q: besoin.trim() });
+    router.push(`/publier-une-offre?${params.toString()}`);
   }
 
   return (
@@ -452,18 +462,11 @@ export function HeroSearchBar() {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={allerVersParcours}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-[13px] bg-ppj-ink px-[22px] text-[15px] font-semibold text-white hover:bg-primary"
-            >
-              Voir les professionnels disponibles
-              <ArrowRight className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={allerVersParcours}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-[13px] border border-ppj-line-button px-[22px] text-[15px] font-semibold text-ppj-ink hover:border-ppj-ink"
+              onClick={allerVersPublication}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-[13px] bg-primary px-[22px] text-[15px] font-semibold text-white hover:bg-[#B8130F]"
             >
               Publier l&apos;offre et recevoir des candidatures
+              <ArrowRight className="size-4" />
             </button>
             <button
               type="button"

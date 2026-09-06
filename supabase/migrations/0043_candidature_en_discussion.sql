@@ -1,0 +1,13 @@
+-- Corrige une ambiguïté du parcours commercial : "Retenir" un candidat
+-- ouvrait jusqu'ici la conversation ET marquait immédiatement la
+-- candidature comme "acceptee" — alors que l'engagement réel
+-- n'intervient qu'au paiement du devis (voir §1-2 du chantier
+-- "PROMPT MAJEUR — CANDIDATURES REÇUES + MESSAGERIE + PARCOURS
+-- COMMERCIAL"). Ouvrir une messagerie ne doit jamais, en soi,
+-- constituer une acceptation.
+--
+-- Ajoute un statut intermédiaire "en_discussion" : retenu (la
+-- conversation existe, un devis peut être échangé) mais pas encore
+-- engagé. La candidature ne passe à "acceptee" qu'au paiement
+-- confirmé (voir confirmerPaiementMissionAvecIntent).
+alter type public.candidature_statut_type add value if not exists 'en_discussion';

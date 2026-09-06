@@ -1072,6 +1072,14 @@ export type BesoinEnCours = {
   // reprise de brouillon (l'aller-retour connexion est trop rare pour
   // justifier de les persister) ; l'appelant repart d'aucune ambiguïté
   // en attente, jamais d'une valeur silencieusement "confirmée" à tort.
+  // Correction UX pré-lancement — mêmes garanties d'optionnalité que
+  // contexte/contraintes ci-dessus : un ancien brouillon sans ces clés
+  // reste lisible (undefined, jamais une valeur inventée). Sans elles,
+  // le tarif et le titre saisis à la main pour un besoin mono-métier
+  // disparaissaient après une inscription/connexion, alors que le cas
+  // multi-métiers (SousBesoinEnCours, plus bas) les avait déjà.
+  tarifHoraire?: number | null;
+  titre?: string;
 };
 
 // Durée de vie d'un brouillon sauvegardé côté client — assez large pour

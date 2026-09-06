@@ -34,6 +34,7 @@ export function FicheBandeau({
     tarifMontant: number;
     tarifType: TarifType;
     metier: MetierId;
+    certifications: string[];
   };
   metierLabel: string;
   filiere: string;
@@ -57,13 +58,14 @@ export function FicheBandeau({
       tarifMontant: prestataire.tarifMontant,
       tarifType: prestataire.tarifType,
       photoUrl: prestataire.photoUrl,
+      certifications: prestataire.certifications,
     });
   }
 
   return (
     <div className="border-b border-ppj-line bg-white px-6 pb-[26px] pt-[22px] sm:px-9">
       <div className="mx-auto max-w-[1120px]">
-        <Link href="/prestataires" className="text-[13.5px] text-ppj-text-3 hover:text-ppj-ink">
+        <Link href="/prestataires?mode=recherche" className="text-[13.5px] text-ppj-text-3 hover:text-ppj-ink">
           ← Résultats
         </Link>
 
@@ -123,7 +125,7 @@ export function FicheBandeau({
               {auPanier ? "Retirer du panier" : "Ajouter au panier"}
             </button>
             <Link
-              href="/tableau-de-bord/messagerie"
+              href="/client/messagerie"
               className="flex min-h-12 items-center justify-center rounded-[13px] border border-ppj-line-button bg-white px-[22px] text-[15px] font-semibold text-ppj-ink hover:border-ppj-ink"
             >
               Contacter

@@ -1,92 +1,84 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { FormProvider, useForm, useWatch } from "react-hook-form";
+import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { ChevronLeft, ChevronRight, Loader2, MailCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, MailCheck } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
-import { WizardShell } from "@/components/onboarding/wizard-shell";
-import { PreviewCard } from "@/components/onboarding/prestataire/preview-card";
-import { getStepsForMetier } from "@/components/onboarding/prestataire/steps-config";
+import { ActsNav, type TempsNav } from "@/components/onboarding/prestataire/acts-nav";
+import { TempsQuiVousEtes } from "@/components/onboarding/prestataire/temps-qui-vous-etes";
+import { TempsCeQueVousFaites } from "@/components/onboarding/prestataire/temps-ce-que-vous-faites";
+import { TempsOuEtQuand } from "@/components/onboarding/prestataire/temps-ou-et-quand";
+import { PreviewColumn } from "@/components/onboarding/prestataire/preview-column";
+import { SuccessScreen } from "@/components/onboarding/prestataire/success-screen";
+import { missingFor, type Manquant } from "@/components/onboarding/prestataire/validation";
 import {
   PRESTATAIRE_DEFAULT_VALUES,
-  prestataireSchema,
+  disponibiliteVersChamps,
+  prestataireSubmitSchema,
   type PrestataireFormValues,
 } from "@/components/onboarding/prestataire/schema";
-import { StepCoordonnees } from "@/components/onboarding/prestataire/step-coordonnees";
-import { StepMetier } from "@/components/onboarding/prestataire/step-metier";
-import { StepSpecialites } from "@/components/onboarding/prestataire/step-specialites";
-import { StepLocalisation } from "@/components/onboarding/prestataire/step-localisation";
-import { StepTarif } from "@/components/onboarding/prestataire/step-tarif";
-import { StepPhoto } from "@/components/onboarding/prestataire/step-photo";
-import { StepJustificatifs } from "@/components/onboarding/prestataire/step-justificatifs";
-import { StepCgu } from "@/components/onboarding/prestataire/step-cgu";
-import { SuccessScreen } from "@/components/onboarding/prestataire/success-screen";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { completerProfilPrestataire } from "@/app/actions/inscription";
-import { uploaderEtEnregistrerJustificatif } from "@/lib/justificatifs-upload";
 import { uploaderPhotoProfil } from "@/lib/avatar-upload";
 
-const STORAGE_KEY = "proparjour:onboarding-prestataire";
+const STORAGE_KEY = "proparjour:onboarding-prestataire:v2";
 const INSCRIPTION_PATH = "/inscription/prestataire";
 
-/**
- * Best-effort : un échec ici ne doit pas faire perdre le compte déjà
- * créé — le prestataire réapparaîtra sans document dans la file
- * d'attente admin, qui pourra lui en redemander un (notification
- * "document_demande").
- */
-async function uploaderJustificatif(profilId: string, file: File) {
-  const result = await uploaderEtEnregistrerJustificatif(profilId, "carte_cnaps", file);
-  if (!result.success) {
-    console.error("Échec de l'upload du justificatif :", result.error);
-  }
-}
+const TEMPS_META: { n: 1 | 2 | 3; title: string; sub: string }[] = [
+  { n: 1, title: "Qui vous êtes", sub: "Coordonnées, téléphone confidentiel et portrait." },
+  { n: 2, title: "Ce que vous faites", sub: "Secteur, intitulé, spécialités et tarif." },
+  { n: 3, title: "Où et quand", sub: "Ville, déplacements et disponibilité." },
+];
 
 export function PrestataireWizard() {
-  const methods = useForm<PrestataireFormValues>({
-    resolver: zodResolver(prestataireSchema),
-    defaultValues: PRESTATAIRE_DEFAULT_VALUES,
-    mode: "onChange",
-  });
-  const { control, trigger, getValues, setValue, setError, clearErrors, reset } = methods;
+  const [values, setValues] = useState<PrestataireFormValues>(PRESTATAIRE_DEFAULT_VALUES);
+  const [act, setAct] = useState<1 | 2 | 3 | 4>(1);
+  const [nudge, setNudge] = useState<Manquant[] | null>(null);
+  const [nudgeKey, setNudgeKey] = useState(0);
 
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
-  const [justificatifFile, setJustificatifFile] = useState<File | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+
   const [hydrated, setHydrated] = useState(false);
   const [existingUser, setExistingUser] = useState<User | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const metier = useWatch({ control, name: "metier" });
-  const steps = useMemo(() => getStepsForMetier(metier), [metier]);
-  const values = useWatch({ control });
-
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        reset({ ...PRESTATAIRE_DEFAULT_VALUES, ...JSON.parse(saved) });
-      } catch {
-        // ignore corrupted local draft
+    // Un seul flux async : le brouillon local est appliqué après le
+    // premier `await`, jamais de façon synchrone dans le corps de
+    // l'effet (évite les rendus en cascade) — mais toujours après le
+    // montage client, comme avant, pour ne pas désynchroniser le
+    // rendu serveur (qui ne connaît pas le brouillon local).
+    let annule = false;
+    async function hydrater() {
+      let brouillon: Partial<PrestataireFormValues> | null = null;
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          brouillon = JSON.parse(saved);
+        } catch {
+          // ignore corrupted local draft
+        }
       }
-    }
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setExistingUser(data.user);
-        setValue("email", data.user.email ?? "");
-      }
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      if (annule) return;
+      setValues((prev) => ({
+        ...prev,
+        ...brouillon,
+        ...(data.user ? { email: data.user.email ?? "" } : {}),
+      }));
+      if (data.user) setExistingUser(data.user);
       setHydrated(true);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+    }
+    hydrater();
+    return () => {
+      annule = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -94,44 +86,30 @@ export function PrestataireWizard() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
   }, [values, hydrated]);
 
-  const safeIndex = Math.min(currentIndex, steps.length - 1);
+  const ctx = useMemo(() => ({ existingUser: Boolean(existingUser), hasPhoto: Boolean(photoPreviewUrl) }), [existingUser, photoPreviewUrl]);
 
-  function handlePhotoSelect(file: File) {
-    setPhotoFile(file);
-    setPhotoPreviewUrl(URL.createObjectURL(file));
+  const tempsNav: TempsNav[] = TEMPS_META.map((t) => ({ ...t, manquants: missingFor(t.n, values, ctx).length }));
+
+  const bad = useMemo(() => new Set((nudge ?? []).map((m) => m.key)), [nudge]);
+
+  function setField<K extends keyof PrestataireFormValues>(key: K, value: PrestataireFormValues[K]) {
+    setValues((prev) => ({ ...prev, [key]: value }));
+    setNudge(null);
   }
 
-  function handlePhotoRemove() {
-    setPhotoFile(null);
-    setPhotoPreviewUrl(null);
+  function go(n: number) {
+    setAct(n as 1 | 2 | 3);
+    setNudge(null);
   }
 
-  function validateSpecialites(): boolean {
-    const currentMetier = getValues("metier");
-    clearErrors(["numeroCarteCnaps", "langues", "secteurExperience"]);
+  function back() {
+    setAct((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev));
+    setNudge(null);
+  }
 
-    if (currentMetier === "securite" && !getValues("numeroCarteCnaps")?.trim()) {
-      setError("numeroCarteCnaps", {
-        type: "manual",
-        message: "Le numéro de carte professionnelle CNAPS est requis",
-      });
-      return false;
-    }
-    if (currentMetier === "accueil" && getValues("langues").length === 0) {
-      setError("langues", {
-        type: "manual",
-        message: "Sélectionnez au moins une langue parlée",
-      });
-      return false;
-    }
-    if (currentMetier === "vente" && !getValues("secteurExperience")?.trim()) {
-      setError("secteurExperience", {
-        type: "manual",
-        message: "Sélectionnez votre secteur d'expérience",
-      });
-      return false;
-    }
-    return true;
+  function raiseNudge(manquants: Manquant[]) {
+    setNudge(manquants);
+    setNudgeKey((k) => k + 1);
   }
 
   async function handleGoogleClick() {
@@ -139,22 +117,21 @@ export function PrestataireWizard() {
     if (error) setAuthError(error.message);
   }
 
-  async function submitInscription() {
-    const data = getValues();
+  function handlePhotoSelect(file: File) {
+    setPhotoFile(file);
+    setPhotoPreviewUrl(URL.createObjectURL(file));
+    setNudge(null);
+  }
+
+  async function submit() {
     setAuthError(null);
-
-    if (!existingUser && (!data.motDePasse || data.motDePasse.length < 8)) {
-      setError("motDePasse", { type: "manual", message: "8 caractères minimum" });
-      return;
-    }
-
     setSubmitting(true);
     try {
       if (!existingUser) {
         const supabase = createClient();
         const { data: signUpData, error } = await supabase.auth.signUp({
-          email: data.email,
-          password: data.motDePasse!,
+          email: values.email.trim(),
+          password: values.motDePasse,
         });
         if (error) {
           setAuthError(error.message);
@@ -166,156 +143,197 @@ export function PrestataireWizard() {
         }
       }
 
-      const result = await completerProfilPrestataire(data);
+      const { disponibilites, visible } = disponibiliteVersChamps(values.disponibilite!);
+      const payload = prestataireSubmitSchema.parse({
+        prenom: values.prenom.trim(),
+        nom: values.nom.trim(),
+        email: values.email.trim(),
+        telephone: values.telephone.trim(),
+        metier: values.metier,
+        titre: values.titre.trim(),
+        specialites: values.specialites,
+        tarifMontant: Number(values.tarifMontant),
+        anneesExperience: values.anneesExperience.trim() ? Number(values.anneesExperience) : null,
+        ville: values.ville.trim(),
+        zonesDeplacement: values.zonesDeplacement,
+        disponibilites,
+        visible,
+        accepteCgu: values.accepteCgu,
+      });
+
+      const result = await completerProfilPrestataire(payload);
       if (!result.success) {
         setAuthError(result.error);
         return;
-      }
-
-      if (justificatifFile) {
-        await uploaderJustificatif(result.data.profilId, justificatifFile);
       }
 
       if (photoFile) {
         const photoResult = await uploaderPhotoProfil(photoFile);
         if (photoResult.success) {
           const supabase = createClient();
-          await supabase
-            .from("prestataires_profils")
-            .update({ photo_url: photoResult.url })
-            .eq("id", result.data.profilId);
+          await supabase.from("prestataires_profils").update({ photo_url: photoResult.url }).eq("id", result.data.profilId);
         } else {
           console.error("Échec de l'upload de la photo :", photoResult.error);
         }
       }
 
       window.localStorage.removeItem(STORAGE_KEY);
-      setSubmitted(true);
+      setAct(4);
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleNext() {
-    const step = steps[safeIndex];
-    const fieldsValid = step.fields.length ? await trigger(step.fields) : true;
-    const stepValid =
-      step.id === "specialites" ? fieldsValid && validateSpecialites() : fieldsValid;
-    if (!stepValid) return;
-
-    if (safeIndex === steps.length - 1) {
-      await submitInscription();
+  function next() {
+    if (act < 3) {
+      const manquants = missingFor(act as 1 | 2 | 3, values, ctx);
+      if (manquants.length) {
+        raiseNudge(manquants);
+        return;
+      }
+      setAct((act + 1) as 1 | 2 | 3);
+      setNudge(null);
       return;
     }
-    setCurrentIndex(safeIndex + 1);
+
+    // Publication : les trois temps sont librement cliquables, donc
+    // tous doivent être revérifiés ici — pas seulement le temps
+    // courant (voir PROMPT-INSCRIPTION.txt §7).
+    for (const t of TEMPS_META) {
+      const manquants = missingFor(t.n, values, ctx);
+      if (manquants.length) {
+        setAct(t.n);
+        raiseNudge(manquants);
+        return;
+      }
+    }
+    submit();
   }
 
-  function handleBack() {
-    setCurrentIndex(Math.max(0, safeIndex - 1));
-  }
-
-  if (submitted) {
-    return <SuccessScreen enAttenteValidation={getValues("metier") === "securite"} />;
+  if (act === 4) {
+    return (
+      <PageShell>
+        <div className="rounded-[20px] border border-[#EAE6E0] bg-white p-[clamp(18px,3vw,30px)]">
+          <SuccessScreen />
+        </div>
+      </PageShell>
+    );
   }
 
   if (awaitingConfirmation) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center bg-secondary/30 px-4 py-16">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-background p-8 text-center shadow-sm">
-          <div className="mb-4 flex justify-center">
-            <Logo />
-          </div>
-          <span className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <PageShell>
+        <div className="mx-auto max-w-md rounded-[20px] border border-[#EAE6E0] bg-white p-8 text-center">
+          <span className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[rgba(226,29,27,0.1)] text-[#E21D1B]">
             <MailCheck className="size-7" />
           </span>
-          <h1 className="font-heading text-2xl font-semibold text-foreground">
+          <h1 className="text-[22px] text-[#1A1917]" style={{ fontFamily: "var(--font-instrument-serif, Georgia, serif)" }}>
             Vérifiez votre e-mail
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Cliquez sur le lien reçu par e-mail pour confirmer votre compte,
-            puis reconnectez-vous pour terminer votre inscription.
+          <p className="mt-2 text-[13.5px] leading-[1.6] text-[#6B6660]">
+            Cliquez sur le lien reçu par e-mail pour confirmer votre compte, puis reconnectez-vous pour terminer votre inscription.
           </p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
-  const step = steps[safeIndex];
-  const isLast = safeIndex === steps.length - 1;
+  const isLast = act === 3;
 
   return (
-    <FormProvider {...methods}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleNext();
-        }}
-      >
-        <WizardShell
-          steps={steps}
-          currentIndex={safeIndex}
-          tip={step.tip}
-          preview={
-            <PreviewCard values={values} photoPreviewUrl={photoPreviewUrl} />
-          }
+    <PageShell>
+      <div className="mb-6">
+        <h1
+          className="mb-2 text-[clamp(30px,3.4vw,42px)] leading-[1.05] tracking-[-0.02em] text-[#1A1917]"
+          style={{ fontFamily: "var(--font-instrument-serif, Georgia, serif)" }}
         >
-          {step.id === "coordonnees" && (
-            <StepCoordonnees
+          Votre profil en trois temps
+        </h1>
+        <p className="max-w-[62ch] text-[15px] leading-[1.6] text-[#6B6660]">
+          Comptez cinq minutes. Vous voyez votre fiche se construire à droite, et vous pouvez revenir en arrière à tout moment.
+        </p>
+      </div>
+
+      <ActsNav temps={tempsNav} current={act} onGo={go} />
+
+      <div className="flex flex-wrap items-start gap-[22px]">
+        <div className="min-w-0 flex-[1_1_440px] rounded-[20px] border border-[#EAE6E0] bg-white p-[clamp(18px,3vw,30px)]" style={{ animation: "ppj-act-in 240ms cubic-bezier(.2,.8,.2,1) both" }}>
+          {act === 1 && (
+            <TempsQuiVousEtes
+              values={values}
+              setField={setField}
+              bad={bad}
               existingUser={Boolean(existingUser)}
               onGoogleClick={handleGoogleClick}
+              photoPreviewUrl={photoPreviewUrl}
+              onPhotoSelect={handlePhotoSelect}
             />
           )}
-          {step.id === "metier" && <StepMetier />}
-          {step.id === "specialites" && <StepSpecialites />}
-          {step.id === "localisation" && <StepLocalisation />}
-          {step.id === "tarif" && <StepTarif />}
-          {step.id === "photo" && (
-            <StepPhoto
-              previewUrl={photoPreviewUrl}
-              onSelect={handlePhotoSelect}
-              onRemove={handlePhotoRemove}
-            />
-          )}
-          {step.id === "justificatifs" && (
-            <StepJustificatifs
-              file={justificatifFile}
-              onSelect={setJustificatifFile}
-              onRemove={() => setJustificatifFile(null)}
-            />
-          )}
-          {step.id === "cgu" && (
-            <StepCgu values={values as PrestataireFormValues} />
-          )}
+          {act === 2 && <TempsCeQueVousFaites values={values} setField={setField} bad={bad} />}
+          {act === 3 && <TempsOuEtQuand values={values} setField={setField} bad={bad} />}
 
-          {authError && (
-            <p className="mt-4 text-sm font-medium text-destructive">{authError}</p>
-          )}
+          {authError && <p className="mt-4 text-[13.5px] font-medium text-[#8E2A26]">{authError}</p>}
 
-          <div className="mt-8 flex items-center justify-between border-t border-border pt-6">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleBack}
-              disabled={safeIndex === 0}
-              className="rounded-full"
-            >
-              <ChevronLeft className="size-4" />
-              Précédent
-            </Button>
-            <Button type="submit" className="rounded-full" disabled={submitting}>
-              {submitting && <Loader2 className="size-4 animate-spin" />}
-              {isLast ? (
-                "Créer mon profil"
-              ) : (
-                <>
-                  Suivant
-                  <ChevronRight className="size-4" />
-                </>
+          <div className="mt-6 grid gap-3 border-t border-[#EFEBE6] pt-5">
+            {nudge && (
+              <div key={nudgeKey} className="rounded-[13px] border border-[#F8D3D1] bg-[#FDECEB] p-[13px_15px]" style={{ animation: "ppj-nudge 300ms ease both" }}>
+                <span className="block text-[13.5px] font-bold text-[#8E2A26]">
+                  {nudge.length === 1 ? "Il manque une chose" : `Il manque ${nudge.length} choses`}
+                </span>
+                <span className="mt-1 block text-[12.5px] leading-[1.55] text-[#8E2A26]">
+                  Renseignez {nudge.map((m) => m.label).join(", ")}. Les champs concernés sont encadrés en rouge sur cette étape.
+                </span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-[11px]">
+              <button
+                type="button"
+                onClick={next}
+                disabled={submitting}
+                className="inline-flex min-h-[50px] items-center gap-1.5 rounded-[13px] bg-[#E21D1B] px-6 text-[15px] font-semibold text-white transition-colors hover:bg-[#B8130F] disabled:opacity-70"
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                {isLast ? "Publier ma fiche" : "Continuer"}
+              </button>
+              {act > 1 && (
+                <button
+                  type="button"
+                  onClick={back}
+                  className="inline-flex min-h-[50px] items-center rounded-[13px] border border-[#DDD8D1] bg-white px-5 text-[14.5px] font-semibold text-[#1A1917] transition-colors hover:border-[#1A1917]"
+                >
+                  Revenir
+                </button>
               )}
-            </Button>
+              <span className="ml-auto text-[12.5px] text-[#98938B]">{isLast ? "Dernière étape" : `Étape ${act} sur 3`}</span>
+            </div>
           </div>
-        </WizardShell>
-      </form>
-    </FormProvider>
+        </div>
+
+        <PreviewColumn values={values} photoPreviewUrl={photoPreviewUrl} existingUser={Boolean(existingUser)} />
+      </div>
+    </PageShell>
+  );
+}
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-full bg-[#FBFAF8]">
+      <style>{`
+        @keyframes ppj-act-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        @keyframes ppj-nudge { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+      `}</style>
+      <header className="sticky top-0 z-20 border-b border-[#EAE6E0] bg-[rgba(251,250,248,0.92)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center gap-[22px] px-[28px] py-4">
+          <Logo />
+          <span className="ml-auto text-[13px] text-[#6B6660]">
+            Déjà inscrit ?{" "}
+            <Link href="/connexion" className="font-semibold text-[#E21D1B] hover:text-[#B8130F]">
+              Se connecter
+            </Link>
+          </span>
+        </div>
+      </header>
+      <div className="mx-auto max-w-[1180px] px-[28px] py-[30px] pb-[72px]">{children}</div>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { requireAdminSession } from "@/lib/admin/auth";
 import { getDossierKyc } from "@/lib/admin/kyc";
 import { KycDossierDetail } from "@/components/admin/kyc-dossier-detail";
+import { AdminH1 } from "@/components/admin/ui/section";
 
 export const metadata: Metadata = { title: "Dossier — Admin ProParJour" };
 
@@ -19,12 +20,17 @@ export default async function AdminValidationDetailPage({
 
   return (
     <div>
-      <Link href="/admin/validations" className="text-sm text-muted-foreground hover:text-foreground">
+      <Link
+        href="/admin/validations"
+        className="inline-flex items-center gap-1.5 text-[13px] text-[var(--a-text-2)] transition-colors hover:text-[var(--a-ink)]"
+      >
         ← Retour à la file d&apos;attente
       </Link>
-      <h1 className="mt-2 font-display-serif text-2xl text-foreground">
-        Dossier de {dossier.user.prenom} {dossier.user.nom}
-      </h1>
+      <div className="mt-2">
+        <AdminH1>
+          Dossier de {dossier.user.prenom} {dossier.user.nom}
+        </AdminH1>
+      </div>
       <div className="mt-4">
         <KycDossierDetail dossier={dossier} />
       </div>

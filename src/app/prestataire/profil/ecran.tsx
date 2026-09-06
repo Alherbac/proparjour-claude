@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Badge } from "@/app/prestataire/_components/badge";
 import { DashButton } from "@/app/prestataire/_components/button";
 import { dateCourteFr, dateCourteFrHorodatage, cheminJustificatif } from "@/app/prestataire/_lib";
@@ -135,6 +136,8 @@ function CarteExperiences({ auto, manuellesInitiales }: { auto: ExperienceAuto[]
         setOuvert(false);
         setValeurs({ intitule: "", employeur: "", periode: "", lieu: "", description: "" });
         router.refresh();
+      } else {
+        toast.error(res.error);
       }
     });
   }

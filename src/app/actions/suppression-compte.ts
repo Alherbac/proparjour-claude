@@ -6,10 +6,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminSession } from "@/lib/admin/auth";
 import { journaliser } from "@/lib/admin/audit";
 import { traduireErreurDb } from "@/lib/erreurs-db";
+import type { MissionStatutType } from "@/lib/supabase/database.types";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
-/** L'utilisateur demande la suppression de son compte (RGPD) — une seule demande "en_attente" à la fois, voir 0038. */
+/**
+ * L'utilisateur demande la suppression de son compte (RGPD) — une
+ * seule demande "en_attente" à la fois, voir 0038. Motif obligatoire
+ * (dossier design "Votre profil" / "Paramètres") : le formulaire ne
+ * peut déjà pas soumettre sans motif choisi, revérifié ici. Une
+ * mission encore active bloque la demande — le texte précise laquelle,
+ * pour que l'utilisateur sache quoi terminer d'abord.
+ */
 export async function demanderSuppressionCompte(motif: string): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -18,10 +26,42 @@ export async function demanderSuppressionCompte(motif: string): Promise<ActionRe
   if (!user) {
     return { success: false, error: "Vous devez être connecté." };
   }
+  if (!motif.trim()) {
+    return { success: false, error: "Merci de préciser un motif." };
+  }
+
+  const { data: profil } = await supabase.from("users").select("type").eq("id", user.id).maybeSingle();
+  const statutsActifs: MissionStatutType[] = ["en_attente", "confirmee", "en_cours"];
+  let missionActive: { id: string; lieu: string; date_mission: string } | null = null;
+  if (profil?.type === "prestataire") {
+    const { data: profilPrestataire } = await supabase.from("prestataires_profils").select("id").eq("user_id", user.id).maybeSingle();
+    if (profilPrestataire) {
+      const { data: lignes } = await supabase
+        .from("mission_lignes")
+        .select("mission_id, statut_acceptation, missions(id, lieu, date_mission, statut)")
+        .eq("prestataire_id", profilPrestataire.id)
+        .eq("statut_acceptation", "acceptee");
+      const ligneActive = (lignes ?? []).find((l) => {
+        const m = l.missions as unknown as { id: string; lieu: string; date_mission: string; statut: MissionStatutType } | null;
+        return m && statutsActifs.includes(m.statut);
+      });
+      const m = ligneActive?.missions as unknown as { id: string; lieu: string; date_mission: string } | undefined;
+      missionActive = m ?? null;
+    }
+  } else {
+    const { data: missions } = await supabase.from("missions").select("id, lieu, date_mission, statut").eq("recruteur_id", user.id).in("statut", statutsActifs);
+    missionActive = missions?.[0] ?? null;
+  }
+  if (missionActive) {
+    return {
+      success: false,
+      error: `Une mission est encore en cours (${missionActive.lieu}, ${missionActive.date_mission}) — elle doit être terminée avant de supprimer votre compte.`,
+    };
+  }
 
   const { error } = await supabase.from("demandes_suppression_compte").insert({
     user_id: user.id,
-    motif: motif.trim() || null,
+    motif: motif.trim(),
   });
   if (error) {
     if (error.code === "23505") {
@@ -30,7 +70,8 @@ export async function demanderSuppressionCompte(motif: string): Promise<ActionRe
     return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer votre demande pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/client/parametres");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -56,7 +97,7 @@ export async function traiterDemandeSuppression(
   const admin = createAdminClient();
   const { data: demande } = await admin
     .from("demandes_suppression_compte")
-    .select("id, user_id, statut")
+    .select("id, user_id, statut, motif")
     .eq("id", demandeId)
     .maybeSingle();
   if (!demande) {
@@ -65,6 +106,10 @@ export async function traiterDemandeSuppression(
   if (demande.statut !== "en_attente") {
     return { success: false, error: "Cette demande a déjà été traitée." };
   }
+
+  // Capturé avant suppression — le journal (§5.12) affiche le rôle,
+  // et le compte n'existera plus pour le retrouver ensuite.
+  const { data: compteAvantSuppression } = await admin.from("users").select("type").eq("id", demande.user_id).maybeSingle();
 
   if (decision === "traitee") {
     // `public.users.id` cascade sur `auth.users`, et `demandes_suppression_compte.user_id`
@@ -96,7 +141,8 @@ export async function traiterDemandeSuppression(
     action: decision === "traitee" ? "compte_supprime" : "suppression_refusee",
     cibleType: "utilisateur",
     cibleId: demande.user_id,
-    motif: decision === "refusee" ? motifRefus : null,
+    motif: decision === "refusee" ? motifRefus : demande.motif,
+    details: decision === "traitee" ? { role: compteAvantSuppression?.type ?? null } : undefined,
   });
 
   revalidatePath("/admin/suppressions");

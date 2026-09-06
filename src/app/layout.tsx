@@ -3,6 +3,7 @@ import { Public_Sans, IBM_Plex_Mono, Fraunces, Instrument_Serif } from "next/fon
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
+import { AnalyticsTracker } from "@/components/analytics-tracker";
 import "./globals.css";
 
 // Corps de texte et UI dans tout le produit (remplace Geist — refonte
@@ -90,6 +91,7 @@ export default function RootLayout({
           {children}
           <Toaster />
           <CookieConsentBanner />
+          <AnalyticsTracker />
         </ThemeProvider>
       </body>
     </html>

@@ -18,11 +18,14 @@ export function AdresseAutocomplete({
   value,
   onChange,
   placeholder,
+  className,
 }: {
   id: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** Classes de l'input, pour un espace dont les champs suivent un système visuel différent (garde "pl-8" par défaut). */
+  className?: string;
 }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [ouvert, setOuvert] = useState(false);
@@ -59,10 +62,10 @@ export function AdresseAutocomplete({
   return (
     <div ref={conteneurRef} className="relative">
       <div className="relative">
-        <MapPin className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <MapPin className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[#98938B]" />
         <Input
           id={id}
-          className="pl-8"
+          className={className ?? "pl-8"}
           value={value ?? ""}
           placeholder={placeholder}
           autoComplete="off"
@@ -74,12 +77,12 @@ export function AdresseAutocomplete({
         />
       </div>
       {ouvert && suggestions.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-[10px] border border-[#DDD8D1] bg-white shadow-md">
           {suggestions.map((label) => (
             <button
               key={label}
               type="button"
-              className="block w-full px-3 py-2 text-left text-sm text-popover-foreground hover:bg-secondary"
+              className="block w-full px-3 py-2 text-left text-[13px] text-[#1A1917] hover:bg-[#F6F4F0]"
               onMouseDown={(e) => {
                 e.preventDefault();
                 onChange(label);

@@ -31,9 +31,18 @@ export async function retenirCandidature(candidatureId: string): Promise<Resulta
   } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Vous devez être connecté." };
 
-  const { data: candidature } = await supabase.from("candidatures").select("id, offre_id, prestataire_id, statut").eq("id", candidatureId).maybeSingle();
+  const { data: candidature } = await supabase.from("candidatures").select("id, offre_id, prestataire_id, statut, profil_consulte_le").eq("id", candidatureId).maybeSingle();
   if (!candidature) return { success: false, error: "Candidature introuvable." };
   if (candidature.statut !== "en_attente") return { success: false, error: "Cette candidature a déjà reçu une réponse." };
+  // Contrôle serveur du nouveau parcours obligatoire (voir §1
+  // "CANDIDATURES REÇUES — WORKFLOW OBLIGATOIRE") : impossible
+  // d'ouvrir la conversation (donc de "retenir") sans être passé par
+  // la fiche privée du candidat au moins une fois — jamais seulement
+  // un bouton caché côté interface, revérifié ici depuis la colonne
+  // écrite par marquerProfilConsulte.
+  if (!candidature.profil_consulte_le) {
+    return { success: false, error: "Consultez le profil du candidat avant de le retenir." };
+  }
 
   const { error: updateError } = await supabase.from("candidatures").update({ statut: "en_discussion" }).eq("id", candidatureId);
   if (updateError) return { success: false, error: "Impossible d'enregistrer votre réponse pour le moment." };
@@ -123,6 +132,66 @@ export async function reintegrerCandidature(candidatureId: string): Promise<Resu
   revalidatePath("/client/candidatures");
   revalidatePath("/client");
   return { success: true };
+}
+
+/**
+ * "Ne pas retenir" (icône poubelle, §1) — reste disponible directement
+ * depuis la liste, sans passer par le profil ni la conversation :
+ * seul "retenir" (voir retenirCandidature) exige ces deux étapes. Même
+ * garde de statut que le reste du fichier : une candidature déjà
+ * répondue (en_discussion/acceptee/refusee) ne peut plus être écartée
+ * par ce chemin. Ne supprime ni la candidature ni ses données — elle
+ * reste consultable via le filtre "Écartées" et réintégrable
+ * (reintegrerCandidature).
+ */
+export async function refuserCandidature(candidatureId: string): Promise<Resultat> {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Vous devez être connecté." };
+
+  const { data: candidature } = await supabase.from("candidatures").select("id, statut").eq("id", candidatureId).maybeSingle();
+  if (!candidature) return { success: false, error: "Candidature introuvable." };
+  if (candidature.statut !== "en_attente") return { success: false, error: "Cette candidature a déjà reçu une réponse." };
+
+  const { error } = await supabase.from("candidatures").update({ statut: "refusee" }).eq("id", candidatureId);
+  if (error) return { success: false, error: "Impossible d'écarter cette candidature pour le moment." };
+
+  revalidatePath("/client/candidatures");
+  revalidatePath("/client");
+  return { success: true };
+}
+
+/**
+ * Marque la fiche privée d'un candidat comme consultée (icône œil,
+ * §1) — première étape obligatoire avant "retenir" (voir
+ * retenirCandidature). Appelée depuis /client/candidats/[id] à chaque
+ * chargement ; n'écrit qu'une fois (le premier appel fixe
+ * définitivement la date, les suivants ne changent rien) et ne fait
+ * jamais échouer l'affichage de la fiche si l'écriture échoue —
+ * cohérent avec le reste du site (creerNotification, etc., best-effort).
+ */
+export async function marquerProfilConsulte(candidatureId: string): Promise<void> {
+  try {
+    const supabase = await creerClientSession();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: candidature } = await supabase
+      .from("candidatures")
+      .select("id, profil_consulte_le")
+      .eq("id", candidatureId)
+      .maybeSingle();
+    if (!candidature || candidature.profil_consulte_le) return;
+
+    await supabase.from("candidatures").update({ profil_consulte_le: new Date().toISOString() }).eq("id", candidatureId);
+    revalidatePath("/client/candidatures");
+  } catch {
+    // Volontairement ignoré — voir commentaire ci-dessus.
+  }
 }
 
 const STATUTS_MISSION_BLOQUANTS: MissionStatutType[] = ["en_attente", "confirmee", "en_cours"];

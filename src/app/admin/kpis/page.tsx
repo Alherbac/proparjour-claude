@@ -1,18 +1,39 @@
 import type { Metadata } from "next";
 import { requireAdminSession } from "@/lib/admin/auth";
-import { getActivitePlateforme } from "@/lib/admin/dashboard";
-import { getRepartitionStatutMissions } from "@/lib/admin/statistiques";
-import { KpisScreen } from "@/components/admin/kpis-screen";
+import {
+  getEntonnoirDirection,
+  getInsightsDirection,
+  getInsightsMetiers,
+  getInsightsPrestataires,
+  getInsightsClients,
+  getInsightsFinances,
+  getInsightsMarche,
+} from "@/lib/admin/insights";
+import { InsightsScreen } from "@/components/admin/insights-screen";
 
-export const metadata: Metadata = { title: "KPI stratégiques — Admin ProParJour" };
+export const metadata: Metadata = { title: "Insights — Admin ProParJour" };
 
-export default async function AdminKpisPage() {
+export default async function AdminInsightsPage() {
   await requireAdminSession();
-  const [toutesPeriodes, trenteJours, { tauxAnnulation }] = await Promise.all([
-    getActivitePlateforme("tout"),
-    getActivitePlateforme("30j"),
-    getRepartitionStatutMissions(),
+  const [entonnoir, direction, metiers, prestataires, clients, finances, marche] = await Promise.all([
+    getEntonnoirDirection(),
+    getInsightsDirection(),
+    getInsightsMetiers(),
+    getInsightsPrestataires(),
+    getInsightsClients(),
+    getInsightsFinances(),
+    getInsightsMarche(),
   ]);
 
-  return <KpisScreen toutesPeriodes={toutesPeriodes} trenteJours={trenteJours} tauxAnnulation={tauxAnnulation} />;
+  return (
+    <InsightsScreen
+      entonnoir={entonnoir}
+      direction={direction}
+      metiers={metiers}
+      prestataires={prestataires}
+      clients={clients}
+      finances={finances}
+      marche={marche}
+    />
+  );
 }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { METIERS } from "@/config/metiers";
+import { SPECIALTY_CATEGORIES } from "@/config/specialtyCategories";
 import { recommanderPrestataires } from "@/lib/matching";
 import { tarifJournalierAffiche } from "@/lib/tarif";
 import { AvisList } from "@/components/prestataire/avis-list";
@@ -151,6 +152,16 @@ export default async function PrestataireProfilPage({
   const premierJourDispo = prestataire.disponibilites[0] ?? null;
   const tarifJournalier = prestataire.tarif_montant > 0 ? tarifJournalierAffiche(prestataire.tarif_montant, prestataire.tarif_type) : null;
 
+  // Spécialités groupées par catégorie — dossier design, "Fiche
+  // professionnelle" (isFiche) : un bloc à filet rouge par catégorie
+  // représentée, jamais une seule ligne aplatie.
+  const specialitesParCategorie = (SPECIALTY_CATEGORIES[prestataire.metier] ?? [])
+    .map((cat) => ({
+      label: cat.label,
+      items: cat.specialites.filter((s) => prestataire.specialites.includes(s)),
+    }))
+    .filter((cat) => cat.items.length > 0);
+
   return (
     <div>
       <FicheBandeau
@@ -162,6 +173,7 @@ export default async function PrestataireProfilPage({
           tarifMontant: prestataire.tarif_montant,
           tarifType: prestataire.tarif_type,
           metier: prestataire.metier,
+          certifications: prestataire.certifications,
         }}
         metierLabel={prestataire.titre || metier?.label || ""}
         filiere={metier?.filiere ?? ""}
@@ -224,13 +236,16 @@ export default async function PrestataireProfilPage({
               </p>
             </section>
 
-            {prestataire.specialites.length > 0 && (
+            {specialitesParCategorie.length > 0 && (
               <section className="rounded-[18px] border border-ppj-line bg-white p-5">
-                <h2 className="mb-2.5 text-[17px] font-semibold text-ppj-ink">Spécialités</h2>
-                <div className="border-l-2 border-primary pl-3.5">
-                  <span className="block text-[13.5px] text-ppj-text-3">
-                    {prestataire.specialites.join(" · ")}
-                  </span>
+                <h2 className="mb-4 text-[17px] font-semibold text-ppj-ink">Spécialités</h2>
+                <div className="grid gap-3">
+                  {specialitesParCategorie.map((cat) => (
+                    <div key={cat.label} className="border-l-2 border-primary pl-3.5">
+                      <span className="block text-[14.5px] font-semibold text-ppj-ink">{cat.label}</span>
+                      <span className="mt-0.5 block text-[13.5px] text-ppj-text-3">{cat.items.join(" · ")}</span>
+                    </div>
+                  ))}
                 </div>
               </section>
             )}

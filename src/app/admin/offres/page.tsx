@@ -3,66 +3,83 @@ import { requireAdminSession } from "@/lib/admin/auth";
 import { getToutesOffresAdmin } from "@/lib/admin/offres";
 import { METIERS } from "@/config/metiers";
 import { montantMission } from "@/lib/duree";
+import { AdminH1 } from "@/components/admin/ui/section";
+import { AdminKpiCard } from "@/components/admin/ui/kpi-card";
+import { AdminBadge, type AdminBadgeTone } from "@/components/admin/ui/badge";
+import { AdminTableShell, AdminTh, AdminTr, AdminTd } from "@/components/admin/ui/table-shell";
 
 export const metadata: Metadata = { title: "Offres — Admin ProParJour" };
 
-const STATUT_LABEL: Record<string, string> = {
-  publiee: "Publiée",
-  pourvue: "Pourvue",
-  annulee: "Annulée",
-  expiree: "Expirée",
+const STATUT_INFO: Record<string, { label: string; tone: AdminBadgeTone }> = {
+  publiee: { label: "Publiée", tone: "green" },
+  pourvue: { label: "Pourvue", tone: "blue" },
+  annulee: { label: "Annulée", tone: "grey" },
+  expiree: { label: "Clôturée", tone: "grey" },
 };
 
 export default async function AdminOffresPage() {
   await requireAdminSession();
   const offres = await getToutesOffresAdmin();
 
+  const publiees = offres.filter((o) => o.statut === "publiee").length;
+  const moyenneCandidatures = offres.length > 0 ? Math.round((offres.reduce((s, o) => s + o.nombre_candidatures, 0) / offres.length) * 10) / 10 : 0;
+  const sansCandidature = offres.filter((o) => o.statut === "publiee" && o.nombre_candidatures === 0).length;
+
   return (
-    <div>
-      <h1 className="font-display-serif text-2xl text-foreground">Offres</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {offres.length} offre{offres.length > 1 ? "s" : ""} publiée{offres.length > 1 ? "s" : ""} sur le marché ouvert.
-      </p>
+    <div className="space-y-5">
+      <div>
+        <AdminH1>Offres</AdminH1>
+        <p className="mt-1 text-[13px] text-[var(--a-text-2)]">{offres.length} offre{offres.length !== 1 ? "s" : ""} au total</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <AdminKpiCard label="Offres publiées" valeur={String(publiees)} aide="actuellement ouvertes" />
+        <AdminKpiCard label="Candidatures reçues" valeur={String(moyenneCandidatures)} aide="moyenne par offre" />
+        <AdminKpiCard label="Sans candidature" valeur={String(sansCandidature)} aide="publiées, à relancer" deltaTone={sansCandidature > 0 ? "down" : "neutral"} />
+      </div>
 
       {offres.length === 0 ? (
-        <p className="mt-6 text-sm text-muted-foreground">Aucune offre publiée pour l&apos;instant.</p>
+        <p className="rounded-2xl border border-dashed border-[var(--a-border-strong)] py-10 text-center text-[13px] text-[var(--a-text-3)]">
+          Aucune offre publiée pour l&apos;instant.
+        </p>
       ) : (
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-secondary/50 text-xs uppercase tracking-wide text-muted-foreground">
+        <AdminTableShell minWidth={1040}>
+          <table className="w-full">
+            <thead>
               <tr>
-                <th className="px-4 py-3 font-medium">Titre</th>
-                <th className="px-4 py-3 font-medium">Recruteur</th>
-                <th className="px-4 py-3 font-medium">Métier</th>
-                <th className="px-4 py-3 font-medium">Ville</th>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Montant</th>
-                <th className="px-4 py-3 font-medium">Candidatures</th>
-                <th className="px-4 py-3 font-medium">Statut</th>
+                <AdminTh>Intitulé</AdminTh>
+                <AdminTh>Métier</AdminTh>
+                <AdminTh>Entreprise</AdminTh>
+                <AdminTh>Rémunération</AdminTh>
+                <AdminTh>Ville</AdminTh>
+                <AdminTh>Candidatures</AdminTh>
+                <AdminTh>Statut</AdminTh>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {offres.map((offre) => {
                 const metier = METIERS.find((m) => m.id === offre.metier);
                 const total = montantMission(offre.heure_debut, offre.heure_fin, offre.tarif_horaire);
                 return (
-                  <tr key={offre.id}>
-                    <td className="px-4 py-3 font-medium text-foreground">{offre.titre}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{offre.recruteur_nom}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{metier?.filiere ?? offre.metier}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{offre.ville}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{offre.date_mission}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {total} € ({offre.tarif_horaire} €/h)
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{offre.nombre_candidatures}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{STATUT_LABEL[offre.statut]}</td>
-                  </tr>
+                  <AdminTr key={offre.id}>
+                    <AdminTd truncate>
+                      <p className="font-bold text-[var(--a-ink)]">{offre.titre}</p>
+                      <p className="text-[11.5px] text-[var(--a-text-3)]">{offre.demande_id ? "ciblée" : "publique"}</p>
+                    </AdminTd>
+                    <AdminTd truncate>{metier?.filiere ?? offre.metier}</AdminTd>
+                    <AdminTd truncate>{offre.recruteur_nom}</AdminTd>
+                    <AdminTd className="a-tabular" truncate>{total} € ({offre.tarif_horaire} €/h)</AdminTd>
+                    <AdminTd truncate>{offre.ville}</AdminTd>
+                    <AdminTd className="a-tabular">{offre.nombre_candidatures}</AdminTd>
+                    <AdminTd>
+                      <AdminBadge tone={STATUT_INFO[offre.statut]?.tone ?? "grey"}>{STATUT_INFO[offre.statut]?.label ?? offre.statut}</AdminBadge>
+                    </AdminTd>
+                  </AdminTr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </AdminTableShell>
       )}
     </div>
   );

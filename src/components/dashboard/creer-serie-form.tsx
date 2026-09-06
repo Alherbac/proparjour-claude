@@ -2,12 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Check, ChevronLeft, Plus, Send, Sparkles, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { AlertTriangle, Check, ChevronLeft, Plus, Repeat, Send, Sparkles, X } from "lucide-react";
+import { DashButton } from "@/app/client/_components/button";
+import { Vignette } from "@/app/client/_components/vignette";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FormField } from "@/components/onboarding/form-field";
 import { ChipMultiSelect } from "@/components/onboarding/chip-multi-select";
 import { AdresseAutocomplete } from "@/components/adresse-autocomplete";
 import { METIERS } from "@/config/metiers";
@@ -25,7 +23,17 @@ import {
 } from "@/app/actions/series";
 import { descriptionSerie } from "@/lib/serie-description";
 import type { MetierType } from "@/lib/supabase/database.types";
-import { cn } from "@/lib/utils";
+
+const champLabel = "mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B6660]";
+const champInput =
+  "w-full rounded-[10px] border border-[#DDD8D1] bg-white px-3 py-2 text-[13px] text-[#1A1917] outline-none transition-colors focus:border-[#1A1917] placeholder:text-[#98938B]";
+const adresseInput =
+  "h-auto rounded-[10px] border-[#DDD8D1] bg-white pl-8 pr-3 py-2 text-[13px] text-[#1A1917] placeholder:text-[#98938B] focus-visible:ring-0 focus-visible:border-[#1A1917]";
+const selectTrigger =
+  "flex w-full items-center justify-between gap-1.5 rounded-[10px] border border-[#DDD8D1] bg-white px-3 py-2 text-[13px] text-[#1A1917] outline-none transition-colors data-placeholder:text-[#98938B] disabled:cursor-not-allowed disabled:opacity-50";
+const selectContent = "rounded-[10px] border border-[#DDD8D1] bg-white text-[#1A1917] shadow-md ring-0";
+const selectItem = "rounded-[8px] py-1.5 pr-8 pl-2.5 text-[13px] text-[#1A1917] focus:bg-[#F6F4F0] focus:text-[#1A1917]";
+const lienRetour = "flex items-center gap-1.5 text-[13px] text-[#6B6660] transition-colors hover:text-[#1A1917]";
 
 type Candidat = {
   prestataireId: string;
@@ -302,8 +310,8 @@ export function CreerSerieForm({
 
   if (candidats.length === 0) {
     return (
-      <div className="rounded-2xl border border-border bg-secondary/30 p-6 text-center">
-        <p className="text-sm text-foreground">
+      <div className="rounded-[18px] border border-[#EAE6E0] bg-[#F6F4F0] p-6 text-center">
+        <p className="text-[13px] text-[#1A1917]">
           Vous n&apos;avez pas encore de professionnel habituel. Les missions récurrentes s&apos;appuient sur des personnes avec
           qui vous avez déjà travaillé — retrouvez cette fonctionnalité après une première mission réussie.
         </p>
@@ -313,54 +321,73 @@ export function CreerSerieForm({
 
   if (etape === "formulaire") {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Titre de la série" htmlFor="titre">
-            <Input id="titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Ex. Sécurité boutique Paris 11" />
-          </FormField>
-          <FormField label="Lieu" htmlFor="lieu">
-            <AdresseAutocomplete id="lieu" value={lieu} onChange={setLieu} />
-          </FormField>
+          <div>
+            <label htmlFor="titre" className={champLabel}>
+              Titre de la série
+            </label>
+            <input id="titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Ex. Sécurité boutique Paris 11" className={champInput} />
+          </div>
+          <div>
+            <label htmlFor="lieu" className={champLabel}>
+              Lieu
+            </label>
+            <AdresseAutocomplete id="lieu" value={lieu} onChange={setLieu} className={adresseInput} />
+          </div>
         </div>
-        <FormField label="Description (optionnel)" htmlFor="description">
-          <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-        </FormField>
+        <div>
+          <label htmlFor="description" className={champLabel}>
+            Description (optionnel)
+          </label>
+          <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={champInput} />
+        </div>
 
-        <div className="rounded-2xl border border-border bg-secondary/30 p-5">
-          <h2 className="font-heading text-base font-semibold text-foreground">Fréquence et période</h2>
+        <div className="rounded-[18px] border border-[#EAE6E0] bg-white p-5">
+          <h2 className="text-[15px] font-bold text-[#1A1917]">Fréquence et période</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <FormField label="Fréquence" htmlFor="frequence">
+            <div>
+              <label htmlFor="frequence" className={champLabel}>
+                Fréquence
+              </label>
               <Select items={FREQUENCES} value={frequence} onValueChange={(v) => setFrequence(v as Frequence)}>
-                <SelectTrigger id="frequence" className="w-full">
+                <SelectTrigger id="frequence" className={selectTrigger}>
                   <SelectValue placeholder="Choisir" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className={selectContent}>
                   {FREQUENCES.map((f) => (
-                    <SelectItem key={f.value} value={f.value}>
+                    <SelectItem key={f.value} value={f.value} className={selectItem}>
                       {f.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </FormField>
+            </div>
             {frequence !== "mensuelle" && (
-              <FormField label="Jours de la semaine" htmlFor="jours">
+              <div>
+                <label className={champLabel}>Jours de la semaine</label>
                 <ChipMultiSelect options={JOURS_SEMAINE} value={joursSemaine} onChange={(v) => setJoursSemaine(v as JourSemaine[])} />
-              </FormField>
+              </div>
             )}
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <FormField label="Début" htmlFor="dateDebut">
-              <Input id="dateDebut" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
-            </FormField>
-            <FormField label="Fin" htmlFor="dateFin">
-              <Input id="dateFin" type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
-            </FormField>
+            <div>
+              <label htmlFor="dateDebut" className={champLabel}>
+                Début
+              </label>
+              <input id="dateDebut" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} className={champInput} />
+            </div>
+            <div>
+              <label htmlFor="dateFin" className={champLabel}>
+                Fin
+              </label>
+              <input id="dateFin" type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} className={champInput} />
+            </div>
           </div>
         </div>
 
-        <div className="space-y-3">
-          <h2 className="font-heading text-base font-semibold text-foreground">Postes de la série</h2>
+        <div className="space-y-2.5">
+          <h2 className="text-[15px] font-bold text-[#1A1917]">Postes de la série</h2>
           {sousBesoins.map((ligne) => {
             const optionsPrestataires = ligne.metier ? (candidatsParMetier.get(ligne.metier) ?? []) : [];
             const itemsMetiers = METIERS.map((m) => ({ value: m.id, label: m.label }));
@@ -369,78 +396,96 @@ export function CreerSerieForm({
               label: c.prenom ?? "Professionnel",
             }));
             return (
-              <div key={ligne.cle} className="rounded-2xl border border-border bg-background p-4">
+              <div key={ligne.cle} className="rounded-[14px] border border-[#EAE6E0] bg-white p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField label="Métier" htmlFor={`metier-${ligne.cle}`}>
+                  <div>
+                    <label htmlFor={`metier-${ligne.cle}`} className={champLabel}>
+                      Métier
+                    </label>
                     <Select
                       items={itemsMetiers}
                       value={ligne.metier}
                       onValueChange={(v) => v && choisirMetier(ligne.cle, v as MetierType)}
                     >
-                      <SelectTrigger id={`metier-${ligne.cle}`} className="w-full">
+                      <SelectTrigger id={`metier-${ligne.cle}`} className={selectTrigger}>
                         <SelectValue placeholder="Choisir un métier" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className={selectContent}>
                         {METIERS.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
+                          <SelectItem key={m.id} value={m.id} className={selectItem}>
                             {m.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </FormField>
-                  <FormField label="Professionnel habituel" htmlFor={`prestataire-${ligne.cle}`}>
+                  </div>
+                  <div>
+                    <label htmlFor={`prestataire-${ligne.cle}`} className={champLabel}>
+                      Professionnel habituel
+                    </label>
                     <Select
                       items={itemsPrestataires}
                       value={ligne.prestataireId}
                       onValueChange={(v) => v && choisirPrestataire(ligne.cle, v)}
                     >
-                      <SelectTrigger id={`prestataire-${ligne.cle}`} className="w-full" disabled={!ligne.metier}>
+                      <SelectTrigger id={`prestataire-${ligne.cle}`} className={selectTrigger} disabled={!ligne.metier}>
                         <SelectValue placeholder={ligne.metier ? "Choisir" : "Choisissez un métier d'abord"} />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className={selectContent}>
                         {optionsPrestataires.map((c) => (
-                          <SelectItem key={c.prestataireId} value={c.prestataireId}>
+                          <SelectItem key={c.prestataireId} value={c.prestataireId} className={selectItem}>
                             {c.prenom ?? "Professionnel"} {c.nbMissions > 0 ? `— ${c.nbMissions} mission${c.nbMissions > 1 ? "s" : ""}` : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </FormField>
+                  </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
-                  <FormField label="Début" htmlFor={`hd-${ligne.cle}`}>
-                    <Input
+                  <div>
+                    <label htmlFor={`hd-${ligne.cle}`} className={champLabel}>
+                      Début
+                    </label>
+                    <input
                       id={`hd-${ligne.cle}`}
                       type="time"
                       value={ligne.heureDebut}
                       onChange={(e) => mettreAJourLigne(ligne.cle, { heureDebut: e.target.value })}
+                      className={champInput}
                     />
-                  </FormField>
-                  <FormField label="Fin" htmlFor={`hf-${ligne.cle}`}>
-                    <Input
+                  </div>
+                  <div>
+                    <label htmlFor={`hf-${ligne.cle}`} className={champLabel}>
+                      Fin
+                    </label>
+                    <input
                       id={`hf-${ligne.cle}`}
                       type="time"
                       value={ligne.heureFin}
                       onChange={(e) => mettreAJourLigne(ligne.cle, { heureFin: e.target.value })}
+                      className={champInput}
                     />
-                  </FormField>
-                  <FormField label="Tarif €/h" htmlFor={`tarif-${ligne.cle}`}>
-                    <Input
+                  </div>
+                  <div>
+                    <label htmlFor={`tarif-${ligne.cle}`} className={champLabel}>
+                      Tarif €/h
+                    </label>
+                    <input
                       id={`tarif-${ligne.cle}`}
                       type="number"
                       min={0}
                       step="0.5"
                       value={ligne.tarifHoraire}
                       onChange={(e) => mettreAJourLigne(ligne.cle, { tarifHoraire: Number(e.target.value) || 0 })}
+                      className={champInput}
                     />
-                  </FormField>
+                  </div>
                 </div>
                 {sousBesoins.length > 1 && (
                   <button
                     type="button"
                     onClick={() => retirerLigne(ligne.cle)}
-                    className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-destructive"
+                    className="mt-3 flex items-center gap-1.5 text-[13px] text-[#6B6660] transition-colors hover:text-[#8E2A26]"
                   >
                     <X className="size-3.5" />
                     Retirer ce poste
@@ -449,43 +494,39 @@ export function CreerSerieForm({
               </div>
             );
           })}
-          <Button type="button" variant="outline" className="rounded-full" onClick={() => setSousBesoins((prev) => [...prev, ligneVide()])}>
+          <DashButton type="button" variant="secondaire" onClick={() => setSousBesoins((prev) => [...prev, ligneVide()])}>
             <Plus className="size-4" />
             Ajouter un poste
-          </Button>
+          </DashButton>
         </div>
 
-        <Button type="button" className="w-full rounded-full" onClick={passerAlApercu}>
+        <DashButton type="button" variant="plein" className="w-full" onClick={passerAlApercu}>
           Voir l&apos;aperçu des occurrences
-        </Button>
+        </DashButton>
       </div>
     );
   }
 
   if (etape === "apercu") {
     return (
-      <div className="space-y-6">
-        <button
-          type="button"
-          onClick={() => setEtape("formulaire")}
-          className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
+      <div className="space-y-5">
+        <button type="button" onClick={() => setEtape("formulaire")} className={lienRetour}>
           <ChevronLeft className="size-4" />
           Modifier
         </button>
 
-        <div className="rounded-2xl border border-border bg-secondary/30 p-5">
-          <p className="font-heading text-lg font-semibold text-foreground">
+        <div className="rounded-[18px] border border-[#EAE6E0] bg-white p-5">
+          <p className="text-[19px] font-bold text-[#1A1917]">
             {dates.length} occurrence{dates.length > 1 ? "s" : ""} calculée{dates.length > 1 ? "s" : ""}
           </p>
           {tronque && (
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-1 text-[12px]" style={{ color: "#96662A" }}>
               Seules les {dates.length} premières occurrences sont proposées — au-delà, créez une nouvelle série pour la suite.
             </p>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
             {dates.map((d) => (
-              <span key={d} className="rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground">
+              <span key={d} className="rounded-[999px] border border-[#DDD8D1] bg-white px-3 py-1 text-[12px] text-[#1A1917]">
                 {new Date(`${d}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
               </span>
             ))}
@@ -493,11 +534,11 @@ export function CreerSerieForm({
         </div>
 
         {!verification ? (
-          <Button type="button" className="w-full rounded-full" disabled={isPending} onClick={verifierDisponibilite}>
+          <DashButton type="button" variant="plein" className="w-full" disabled={isPending} onClick={verifierDisponibilite}>
             {isPending ? "Vérification..." : "Vérifier la disponibilité de mes professionnels"}
-          </Button>
+          </DashButton>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {verification.map((sb, sbIndex) => {
               const ligne = sousBesoinsValides[sbIndex];
               const metier = METIERS.find((m) => m.id === sb.metier);
@@ -505,25 +546,18 @@ export function CreerSerieForm({
                 (o) => o.disponible || remplacements.has(cleResolution(sbIndex, o.date)) || exclusions.has(cleResolution(sbIndex, o.date)),
               ).length;
               return (
-                <div key={ligne?.cle ?? sbIndex} className="rounded-2xl border border-border bg-background p-4">
+                <div key={ligne?.cle ?? sbIndex} className="rounded-[14px] border border-[#EAE6E0] bg-white p-4">
                   <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        "flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-semibold text-foreground/70",
-                        metier?.accent.gradient,
-                      )}
-                    >
-                      {(ligne?.prenom ?? "P").charAt(0)}
-                    </div>
+                    <Vignette photoUrl={ligne?.photoUrl ?? null} nom={ligne?.prenom ?? "P"} />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-foreground">{ligne?.prenom ?? "Professionnel"}</p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-[14px] font-semibold text-[#1A1917]">{ligne?.prenom ?? "Professionnel"}</p>
+                      <p className="text-[13px] text-[#6B6660]">
                         {metier?.label} — {nbOk}/{sb.occurrences.length} occurrences prêtes
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-3 space-y-2 border-t border-border pt-3">
+                  <div className="mt-3 space-y-2 border-t border-[#EAE6E0] pt-3">
                     {sb.occurrences.map((occ) => {
                       const cle = cleResolution(sbIndex, occ.date);
                       const remplacant = remplacements.get(cle);
@@ -535,54 +569,48 @@ export function CreerSerieForm({
                       });
                       if (occ.disponible) {
                         return (
-                          <p key={occ.date} className="flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
+                          <p key={occ.date} className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: "#2A8355" }}>
                             <Check className="size-4" />
                             {dateLabel} — disponible
                           </p>
                         );
                       }
                       return (
-                        <div key={occ.date} className="rounded-xl bg-secondary/30 p-3">
-                          <p className="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400">
+                        <div key={occ.date} className="rounded-[12px] bg-[#F6F4F0] p-3">
+                          <p className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: "#96662A" }}>
                             <AlertTriangle className="size-4" />
                             {`${dateLabel} — ${ligne?.prenom ?? "ce professionnel"} n'est pas disponible`}
                           </p>
                           {exclue ? (
-                            <p className="mt-1.5 text-xs text-muted-foreground">Cette date sera retirée de la série.</p>
+                            <p className="mt-1.5 text-[12px] text-[#6B6660]">Cette date sera retirée de la série.</p>
                           ) : remplacant ? (
-                            <p className="mt-1.5 text-xs text-foreground">Remplacé par {remplacant.prenom ?? "un professionnel"} pour cette date.</p>
+                            <p className="mt-1.5 text-[12px] text-[#1A1917]">Remplacé par {remplacant.prenom ?? "un professionnel"} pour cette date.</p>
                           ) : (
                             <div className="mt-2 space-y-1.5">
                               {occ.remplacements.length > 0 ? (
                                 <>
-                                  <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                                  <p className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#6B6660]">
                                     <Sparkles className="size-3.5" />
                                     Remplaçants disponibles :
                                   </p>
                                   {occ.remplacements.map((r) => (
-                                    <div key={r.prestataireId} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5">
-                                      <span className="text-xs text-foreground">
+                                    <div key={r.prestataireId} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[#EAE6E0] bg-white px-2.5 py-1.5">
+                                      <span className="text-[12.5px] text-[#1A1917]">
                                         {r.prenom ?? "Professionnel"} — {r.score}%
                                       </span>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="rounded-full text-xs"
-                                        onClick={() => remplacerOccurrence(sbIndex, occ.date, r)}
-                                      >
+                                      <DashButton type="button" variant="secondaire" onClick={() => remplacerOccurrence(sbIndex, occ.date, r)}>
                                         Remplacer
-                                      </Button>
+                                      </DashButton>
                                     </div>
                                   ))}
                                 </>
                               ) : (
-                                <p className="text-xs text-muted-foreground">Aucun remplaçant disponible pour cette date.</p>
+                                <p className="text-[12px] text-[#6B6660]">Aucun remplaçant disponible pour cette date.</p>
                               )}
                               <button
                                 type="button"
                                 onClick={() => exclureOccurrence(sbIndex, occ.date)}
-                                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
+                                className="text-[12px] text-[#6B6660] underline underline-offset-2 hover:text-[#8E2A26]"
                               >
                                 Retirer cette date de la série
                               </button>
@@ -597,13 +625,13 @@ export function CreerSerieForm({
             })}
 
             {conflitsNonResolus && (
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              <p className="text-[13px] font-medium" style={{ color: "#96662A" }}>
                 Résolvez (remplacez ou retirez) chaque date en conflit avant de continuer.
               </p>
             )}
-            <Button type="button" className="w-full rounded-full" disabled={conflitsNonResolus} onClick={() => setEtape("confirmation")}>
+            <DashButton type="button" variant="plein" className="w-full" disabled={conflitsNonResolus} onClick={() => setEtape("confirmation")}>
               Continuer vers la confirmation
-            </Button>
+            </DashButton>
           </div>
         )}
       </div>
@@ -611,33 +639,32 @@ export function CreerSerieForm({
   }
 
   return (
-    <div className="space-y-6">
-      <button
-        type="button"
-        onClick={() => setEtape("apercu")}
-        className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
+    <div className="space-y-5">
+      <button type="button" onClick={() => setEtape("apercu")} className={lienRetour}>
         <ChevronLeft className="size-4" />
         Retour
       </button>
 
-      <div className="overflow-hidden rounded-[28px] bg-gradient-to-br from-primary via-primary to-red-900 p-6 text-white">
-        <p className="font-heading text-xl font-semibold">{titre}</p>
-        <p className="mt-1 text-sm text-white/80">{lieu}</p>
-        <p className="mt-3 text-sm text-white/80">{FREQUENCES.find((f) => f.value === frequence)?.label}</p>
+      <div className="rounded-[18px] p-6 text-white" style={{ backgroundColor: "#1A1917" }}>
+        <div className="flex items-center gap-2">
+          <Repeat className="size-5" />
+          <p className="text-[19px] font-bold">{titre}</p>
+        </div>
+        <p className="mt-2 text-[13px] text-white/75">{lieu}</p>
+        <p className="mt-1 text-[13px] text-white/75">{FREQUENCES.find((f) => f.value === frequence)?.label}</p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {(verification ?? []).map((sb, sbIndex) => {
           const ligne = sousBesoinsValides[sbIndex];
           const metier = METIERS.find((m) => m.id === sb.metier);
           const retenues = sb.occurrences.filter((o) => !exclusions.has(cleResolution(sbIndex, o.date)));
           return (
-            <div key={ligne?.cle ?? sbIndex} className="rounded-2xl border border-border bg-background p-4">
-              <p className="font-medium text-foreground">
+            <div key={ligne?.cle ?? sbIndex} className="rounded-[14px] border border-[#EAE6E0] bg-white p-4">
+              <p className="text-[14px] font-semibold text-[#1A1917]">
                 {ligne?.prenom ?? "Professionnel"} — {metier?.label}
               </p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
+              <p className="mt-0.5 text-[13px] text-[#6B6660]">
                 {retenues.length} occurrence{retenues.length > 1 ? "s" : ""} confirmée{retenues.length > 1 ? "s" : ""}
               </p>
             </div>
@@ -645,18 +672,20 @@ export function CreerSerieForm({
         })}
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-border bg-secondary/30 p-4">
-        <span className="text-sm font-medium text-foreground">Montant total estimé</span>
-        <span className="font-heading text-xl font-semibold text-foreground">{totalEstime} €</span>
+      <div className="flex items-center justify-between rounded-[18px] border border-[#EAE6E0] bg-white p-5">
+        <span className="text-[13px] font-semibold text-[#1A1917]">Montant total estimé</span>
+        <span className="text-[24px] text-[#1A1917]" style={{ fontFamily: "var(--font-instrument-serif)" }}>
+          {totalEstime} €
+        </span>
       </div>
 
       {lignesAPayer ? (
         <PaiementDirect lignes={lignesAPayer} serieId={serieIdAPayer ?? undefined} />
       ) : (
-        <Button type="button" className="w-full rounded-full" disabled={isPending} onClick={confirmerSerie}>
+        <DashButton type="button" variant="plein" className="w-full" disabled={isPending} onClick={confirmerSerie}>
           <Send className="size-4" />
           {isPending ? "Création..." : "Confirmer la série et payer"}
-        </Button>
+        </DashButton>
       )}
     </div>
   );

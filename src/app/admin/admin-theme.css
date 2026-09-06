@@ -1,0 +1,93 @@
+/*
+ * Système visuel de l'espace admin (/admin) — indépendant du thème
+ * public (voir Règle n°0 du prompt ESPACE-ADMIN : ne doit ni hériter
+ * du rouge #E21D1B de la landing, ni le lui imposer). Toutes les
+ * variables sont scopées sous `.ppj-admin` (posé sur le wrapper de
+ * admin/layout.tsx) — rien ici ne redéfinit un token de globals.css,
+ * et ce fichier n'est importé que par ce layout.
+ *
+ * Valeurs reprises telles quelles de PROMPT-ESPACE-ADMIN.txt §2.
+ */
+
+.ppj-admin {
+  --a-bg: #f7f6f3;
+  --a-surface: #fdfcfa;
+  --a-surface-2: #f0ede8;
+  --a-surface-3: #e8e4dc;
+  --a-border: #e0dcd4;
+  --a-border-strong: #d4cfc6;
+  --a-ink: #1a1814;
+  --a-text-2: #6b6560;
+  --a-text-3: #a09a92;
+  --a-accent: #e05a3a;
+  --a-accent-hover: #c44a2c;
+  --a-green: #3db87a;
+  --a-orange: #e09a3a;
+  --a-gold: #c8a44a;
+  --a-blue: #5a8fe0;
+  --a-violet: #9b6fd4;
+
+  --a-nav-bg: #1a1814;
+  --a-nav-active: #2e2a24;
+  --a-nav-text: #b8b2aa;
+  --a-nav-dot: #4a443c;
+  --a-nav-sep: #2e2a24;
+  --a-nav-field: #221e19;
+  --a-nav-field-border: #3a352e;
+
+  --a-badge-green-bg: rgba(61, 184, 122, 0.13);
+  --a-badge-green-border: rgba(61, 184, 122, 0.34);
+  --a-badge-green-text: #2a8355;
+  --a-badge-orange-bg: rgba(224, 154, 58, 0.14);
+  --a-badge-orange-border: rgba(224, 154, 58, 0.36);
+  --a-badge-orange-text: #96662a;
+  --a-badge-red-bg: rgba(224, 90, 58, 0.12);
+  --a-badge-red-border: rgba(224, 90, 58, 0.34);
+  --a-badge-red-text: #c44a2c;
+  --a-badge-blue-bg: rgba(90, 143, 224, 0.12);
+  --a-badge-blue-border: rgba(90, 143, 224, 0.32);
+  --a-badge-blue-text: #3f6eb8;
+  --a-badge-gold-bg: rgba(200, 164, 74, 0.14);
+  --a-badge-gold-border: rgba(200, 164, 74, 0.34);
+  --a-badge-gold-text: #96762a;
+  --a-badge-violet-bg: rgba(155, 111, 212, 0.13);
+  --a-badge-violet-border: rgba(155, 111, 212, 0.34);
+  --a-badge-violet-text: #7048ae;
+  --a-badge-grey-bg: #f0ede8;
+  --a-badge-grey-border: #e0dcd4;
+  --a-badge-grey-text: #6b6560;
+
+  --a-font-display: var(--font-admin-syne), "Syne", ui-sans-serif, system-ui, sans-serif;
+  --a-font-body: var(--font-admin-dm-sans), "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  background: var(--a-bg);
+  color: var(--a-ink);
+  font-family: var(--a-font-body);
+}
+
+.ppj-admin * {
+  border-color: var(--a-border);
+}
+
+/* Chiffres alignés en colonne (KPI, tableaux financiers). */
+.ppj-admin .a-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.ppj-admin ::selection {
+  background: rgba(224, 90, 58, 0.22);
+}
+
+/* Scrollbar fine et discrète pour les zones à défilement propre (§1, §3a). */
+.ppj-admin .a-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--a-border-strong) transparent;
+}
+.ppj-admin .a-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.ppj-admin .a-scroll::-webkit-scrollbar-thumb {
+  background: var(--a-border-strong);
+  border-radius: 99px;
+}

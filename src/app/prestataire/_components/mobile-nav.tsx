@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LienNav } from "@/app/prestataire/_components/sidebar";
@@ -19,6 +19,25 @@ export function MobileNav({ liens }: { liens: LienNav[] }) {
     setPlusOuvert(false);
   }
 
+  const navRef = useRef<HTMLElement>(null);
+  // Le bandeau cookies (cookie-consent-banner.tsx) se pose au-dessus
+  // de cette barre via cette variable plutôt que de se superposer —
+  // sans elle il masquait entièrement la barre (et donc "Plus" →
+  // Paramètres → Se déconnecter) tant qu'il restait affiché. Même
+  // mécanisme que l'ancien bottom-nav.tsx (tableau de bord), qui la
+  // posait aussi ; à porter ici puisque ce composant le remplace.
+  useEffect(() => {
+    const definir = () => {
+      document.documentElement.style.setProperty("--ppj-bottom-nav-h", `${navRef.current?.offsetHeight ?? 0}px`);
+    };
+    definir();
+    window.addEventListener("resize", definir);
+    return () => {
+      window.removeEventListener("resize", definir);
+      document.documentElement.style.setProperty("--ppj-bottom-nav-h", "0px");
+    };
+  }, []);
+
   const primaires = liens.slice(0, 5);
   const reste = liens.slice(5);
 
@@ -28,10 +47,11 @@ export function MobileNav({ liens }: { liens: LienNav[] }) {
 
   return (
     <>
-      {plusOuvert && <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setPlusOuvert(false)} aria-hidden="true" />}
+      {/* z-[110]/z-[105] : au-dessus du bandeau cookies (z-[100], cookie-consent-banner.tsx) — sinon ses derniers liens ("Paramètres" notamment) restaient masqués derrière le bandeau tant qu'il n'était pas fermé. */}
+      {plusOuvert && <div className="fixed inset-0 z-[105] bg-black/30 lg:hidden" onClick={() => setPlusOuvert(false)} aria-hidden="true" />}
       {reste.length > 0 && (
         <div
-          className={`fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border border-[#EAE6E0] bg-white shadow-[0_-8px_24px_rgba(0,0,0,0.08)] transition-transform duration-200 lg:hidden ${
+          className={`fixed inset-x-0 bottom-0 z-[110] rounded-t-2xl border border-[#EAE6E0] bg-white shadow-[0_-8px_24px_rgba(0,0,0,0.08)] transition-transform duration-200 lg:hidden ${
             plusOuvert ? "translate-y-0" : "pointer-events-none translate-y-full"
           }`}
         >
@@ -51,7 +71,7 @@ export function MobileNav({ liens }: { liens: LienNav[] }) {
           </div>
         </div>
       )}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#EAE6E0] bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <nav ref={navRef} className="fixed inset-x-0 bottom-0 z-40 border-t border-[#EAE6E0] bg-white pb-[env(safe-area-inset-bottom)] lg:hidden">
         <div className="flex items-stretch">
           {primaires.map((lien) => (
             <Link

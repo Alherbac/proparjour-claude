@@ -3,10 +3,23 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import type { DemandeSuppressionAvecUser } from "@/lib/admin/suppressions";
+import { AdminButton } from "@/components/admin/ui/button";
+import { AdminInput } from "@/components/admin/ui/input";
+import { AdminH1 } from "@/components/admin/ui/section";
+import { AdminKpiCard } from "@/components/admin/ui/kpi-card";
+import { AdminTableShell, AdminTh, AdminTr, AdminTd } from "@/components/admin/ui/table-shell";
+import type { DemandeSuppressionAvecUser, LigneJournalSuppression } from "@/lib/admin/suppressions";
 import { traiterDemandeSuppression } from "@/app/actions/suppression-compte";
+
+function filtrerDepuis90j(journal: LigneJournalSuppression[]) {
+  return journal.filter((j) => Date.now() - new Date(j.date).getTime() < 90 * 86_400_000);
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  prestataire: "Prestataire",
+  recruteur_particulier: "Client particulier",
+  recruteur_entreprise: "Client entreprise",
+};
 
 function LigneDemande({ demande }: { demande: DemandeSuppressionAvecUser }) {
   const router = useRouter();
@@ -33,99 +46,145 @@ function LigneDemande({ demande }: { demande: DemandeSuppressionAvecUser }) {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-background p-4">
+    <div className="rounded-2xl border border-[var(--a-border)] bg-[var(--a-surface)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-medium text-foreground">
+          <p className="text-[13.5px] font-bold text-[var(--a-ink)]" style={{ fontFamily: "var(--a-font-display)" }}>
             {demande.prenom || demande.nom ? `${demande.prenom ?? ""} ${demande.nom ?? ""}`.trim() : "Utilisateur"}
           </p>
-          <p className="text-sm text-muted-foreground">{demande.email ?? "—"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Demande du {new Date(demande.createdAt).toLocaleDateString("fr-FR")}
-          </p>
-          {demande.motif && <p className="mt-2 text-sm text-foreground">« {demande.motif} »</p>}
+          <p className="text-[12.5px] text-[var(--a-text-2)]">{demande.email ?? "—"}</p>
+          <p className="mt-1 text-[11.5px] text-[var(--a-text-3)]">Demande du {new Date(demande.createdAt).toLocaleDateString("fr-FR")}</p>
+          {demande.motif && <p className="mt-2 text-[13px] text-[var(--a-ink)]">« {demande.motif} »</p>}
         </div>
 
         <div className="flex flex-col items-end gap-2">
           {!confirmationSuppression && !refusOuvert && (
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="rounded-full" onClick={() => setRefusOuvert(true)}>
+              <AdminButton size="sm" variant="secondary" onClick={() => setRefusOuvert(true)}>
                 <X className="size-3.5" />
                 Refuser
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="rounded-full"
-                onClick={() => setConfirmationSuppression(true)}
-              >
+              </AdminButton>
+              <AdminButton size="sm" variant="danger" onClick={() => setConfirmationSuppression(true)}>
                 <Trash2 className="size-3.5" />
                 Supprimer le compte
-              </Button>
+              </AdminButton>
             </div>
           )}
 
           {confirmationSuppression && (
             <div className="flex flex-col items-end gap-1.5">
-              <p className="text-xs text-destructive">Action irréversible — confirmer ?</p>
+              <p className="text-[12px] text-[var(--a-badge-red-text)]">Action irréversible — confirmer ?</p>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="rounded-full" onClick={() => setConfirmationSuppression(false)}>
+                <AdminButton size="sm" variant="secondary" onClick={() => setConfirmationSuppression(false)}>
                   Annuler
-                </Button>
-                <Button size="sm" variant="destructive" className="rounded-full" disabled={pending} onClick={supprimer}>
+                </AdminButton>
+                <AdminButton size="sm" variant="danger" disabled={pending} onClick={supprimer}>
                   Confirmer la suppression
-                </Button>
+                </AdminButton>
               </div>
             </div>
           )}
 
           {refusOuvert && (
             <div className="flex flex-col items-end gap-1.5">
-              <Input
-                value={motifRefus}
-                onChange={(e) => setMotifRefus(e.target.value)}
-                placeholder="Motif du refus"
-                className="h-8 w-56 text-xs"
-              />
+              <AdminInput value={motifRefus} onChange={(e) => setMotifRefus(e.target.value)} placeholder="Motif du refus" className="h-8 w-56 text-[12px]" />
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="rounded-full" onClick={() => setRefusOuvert(false)}>
+                <AdminButton size="sm" variant="secondary" onClick={() => setRefusOuvert(false)}>
                   Annuler
-                </Button>
-                <Button size="sm" className="rounded-full" disabled={pending} onClick={refuser}>
+                </AdminButton>
+                <AdminButton size="sm" variant="primary" disabled={pending} onClick={refuser}>
                   Confirmer le refus
-                </Button>
+                </AdminButton>
               </div>
             </div>
           )}
 
-          {erreur && <p className="text-xs text-destructive">{erreur}</p>}
+          {erreur && <p className="text-[12px] text-[var(--a-badge-red-text)]">{erreur}</p>}
         </div>
       </div>
     </div>
   );
 }
 
-export function SuppressionsScreen({ demandes }: { demandes: DemandeSuppressionAvecUser[] }) {
+export function SuppressionsScreen({
+  demandes,
+  journal,
+}: {
+  demandes: DemandeSuppressionAvecUser[];
+  journal: LigneJournalSuppression[];
+}) {
+  const depuis90j = filtrerDepuis90j(journal);
+  const compteurRoles = new Map<string, number>();
+  for (const j of depuis90j) compteurRoles.set(j.role ?? "—", (compteurRoles.get(j.role ?? "—") ?? 0) + 1);
+  const motifDominant = [...compteurRoles.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <h1 className="font-display-serif text-2xl text-foreground">Suppressions</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Demandes de suppression de compte (droit à l&apos;oubli RGPD) en attente de traitement.
+        <AdminH1>Suppressions</AdminH1>
+        <p className="mt-1 text-[13px] text-[var(--a-text-2)]">
+          Journal des comptes supprimés avec motif obligatoire. On conserve la trace nécessaire à la conformité,
+          rien de plus.
         </p>
       </div>
 
-      {demandes.length === 0 ? (
-        <p className="rounded-2xl border border-border bg-background p-6 text-center text-sm text-muted-foreground">
-          Aucune demande en attente.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {demandes.map((d) => (
-            <LigneDemande key={d.id} demande={d} />
-          ))}
-        </div>
-      )}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <AdminKpiCard label="Suppressions (90 j)" valeur={String(depuis90j.length)} />
+        <AdminKpiCard label="Rôle dominant" valeur={motifDominant ? TYPE_LABEL[motifDominant] ?? motifDominant : "—"} aide="parmi les 90 derniers jours" />
+        <AdminKpiCard label="Demandes en attente" valeur={String(demandes.length)} />
+      </div>
+
+      <div>
+        <h2 className="mb-2.5 text-[13.5px] font-bold text-[var(--a-ink)]" style={{ fontFamily: "var(--a-font-display)" }}>
+          En attente de décision
+        </h2>
+        {demandes.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-[var(--a-border-strong)] py-8 text-center text-[13px] text-[var(--a-text-3)]">
+            Aucune demande en attente.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {demandes.map((d) => (
+              <LigneDemande key={d.id} demande={d} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="mb-2.5 text-[13.5px] font-bold text-[var(--a-ink)]" style={{ fontFamily: "var(--a-font-display)" }}>
+          Journal des comptes supprimés
+        </h2>
+        <AdminTableShell minWidth={800}>
+          <table className="w-full">
+            <thead>
+              <tr>
+                <AdminTh>Compte</AdminTh>
+                <AdminTh>Rôle</AdminTh>
+                <AdminTh>Motif déclaré</AdminTh>
+                <AdminTh>Date</AdminTh>
+              </tr>
+            </thead>
+            <tbody>
+              {journal.map((j, i) => (
+                <AdminTr key={i}>
+                  <AdminTd truncate>{j.compteAnonymise}</AdminTd>
+                  <AdminTd truncate>{j.role ? TYPE_LABEL[j.role] ?? j.role : "—"}</AdminTd>
+                  <AdminTd truncate>{j.motif ?? "—"}</AdminTd>
+                  <AdminTd truncate>{new Date(j.date).toLocaleDateString("fr-FR")}</AdminTd>
+                </AdminTr>
+              ))}
+              {journal.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-[13px] text-[var(--a-text-3)]">
+                    Aucune suppression pour l&apos;instant.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </AdminTableShell>
+      </div>
     </div>
   );
 }

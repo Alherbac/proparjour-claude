@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { JOURS_SEMAINE } from "@/components/onboarding/prestataire/schema";
 import { ibanValide, bicValide } from "@/lib/iban";
 import { traduireErreurDb } from "@/lib/erreurs-db";
+import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
 import type { StatutIndependantType, TarifType } from "@/lib/supabase/database.types";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -81,6 +82,17 @@ export async function mettreAJourProfilPrestataire(
   if (input.specialites.length === 0) {
     return { success: false, error: "Sélectionnez au moins une spécialité." };
   }
+  // Même contrôle que les messages/devis (voir lib/coordonnees-interdites.ts) :
+  // le titre et la bio sont visibles de tout client sur la fiche
+  // publique et la fiche privée candidat, un vecteur de contournement
+  // encore plus large qu'un message puisque affiché à tous, en
+  // permanence — trouvé en vérification live, corrigé ici.
+  for (const champ of [input.titre, input.bio]) {
+    const coordonnees = detecterCoordonnees(champ);
+    if (coordonnees) {
+      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
+    }
+  }
 
   const supabase = await createClient();
   const {
@@ -126,7 +138,7 @@ export async function mettreAJourProfilPrestataire(
     return { success: false, error: traduireErreurDb(profilError, "Impossible d'enregistrer votre profil pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -178,7 +190,7 @@ export async function definirExceptionsDisponibilite(
     return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer vos disponibilités pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -214,7 +226,7 @@ export async function supprimerExceptionsDisponibilite(dates: string[]): Promise
     return { success: false, error: traduireErreurDb(error, "Impossible de mettre à jour vos disponibilités pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -266,7 +278,7 @@ export async function ajouterExperience(input: ExperienceInput): Promise<ActionR
     return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer cette expérience pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -301,7 +313,7 @@ export async function modifierExperience(
     return { success: false, error: traduireErreurDb(error, "Impossible de modifier cette expérience pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -319,7 +331,7 @@ export async function supprimerExperience(experienceId: string): Promise<ActionR
     return { success: false, error: traduireErreurDb(error, "Impossible de supprimer cette expérience pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }
 
@@ -396,7 +408,7 @@ export async function mettreAJourProfilRecruteur(input: ProfilRecruteurInput): P
     }
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/client/parametres");
   return { success: true };
 }
 
@@ -432,6 +444,6 @@ export async function modifierCoordonneesBancaires(iban: string, bic: string): P
     return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer vos coordonnées bancaires pour le moment.") };
   }
 
-  revalidatePath("/tableau-de-bord/compte");
+  revalidatePath("/prestataire/profil");
   return { success: true };
 }

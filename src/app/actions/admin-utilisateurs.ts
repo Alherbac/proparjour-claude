@@ -4,8 +4,18 @@ import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { journaliser } from "@/lib/admin/audit";
+import { creerNotification } from "@/lib/notifications";
+import { getFicheUtilisateur, type FicheUtilisateur } from "@/lib/admin/utilisateurs";
 
 type ActionResult = { success: true } | { success: false; error: string };
+type ActionResultData<T> = { success: true; data: T } | { success: false; error: string };
+
+/** Chargée à la demande, au clic sur une ligne (§6) — évite une requête par ligne au chargement de la liste. */
+export async function chargerFicheUtilisateur(userId: string): Promise<ActionResultData<FicheUtilisateur | null>> {
+  await requireAdminSession();
+  const fiche = await getFicheUtilisateur(userId);
+  return { success: true, data: fiche };
+}
 
 // Bannir un compte est une action sensible et difficile à faire
 // suivre correctement par un modérateur (impact direct sur l'accès
@@ -60,6 +70,37 @@ export async function reactiverUtilisateur(userId: string): Promise<ActionResult
     action: "utilisateur_reactive",
     cibleType: "utilisateur",
     cibleId: userId,
+  });
+
+  revalidatePath("/admin/utilisateurs");
+  return { success: true };
+}
+
+/**
+ * Message admin générique vers un compte (notification in-app —
+ * aucun envoi d'e-mail réel n'est câblé dans ce lot, voir rapport
+ * final). Apparaît ensuite dans "Messages administrateur" du panneau
+ * (getFicheUtilisateur, type="message_admin").
+ */
+export async function envoyerMessageAdminUtilisateur(userId: string, sujet: string, contenu: string): Promise<ActionResult> {
+  const session = await requireAdminSession();
+  if (!sujet.trim()) {
+    return { success: false, error: "Le sujet est obligatoire." };
+  }
+
+  await creerNotification({
+    userId,
+    type: "message_admin",
+    titre: sujet.trim(),
+    contenu: contenu.trim() || undefined,
+  });
+
+  await journaliser({
+    adminId: session.userId,
+    action: "message_admin_envoye",
+    cibleType: "utilisateur",
+    cibleId: userId,
+    details: { sujet: sujet.trim() },
   });
 
   revalidatePath("/admin/utilisateurs");

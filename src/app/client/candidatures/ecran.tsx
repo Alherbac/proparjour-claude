@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Eye, Mail, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { StatCard } from "@/app/client/_components/stat-card";
 import { FilterPill } from "@/app/client/_components/filter-pill";
 import { Badge } from "@/app/client/_components/badge";
@@ -11,8 +13,50 @@ import { DashButton } from "@/app/client/_components/button";
 import { Vignette } from "@/app/client/_components/vignette";
 import { BADGE_STATUT_CANDIDATURE } from "@/app/client/_lib";
 import { LABEL_METIER, postesAPourvoir, type OffreAvecCandidatures } from "@/app/client/_types";
-import { retenirCandidature, reintegrerCandidature } from "@/app/client/actions";
+import { retenirCandidature, reintegrerCandidature, refuserCandidature } from "@/app/client/actions";
 import type { MetierType } from "@/lib/supabase/database.types";
+
+/**
+ * Bouton icône seule des 3 actions candidature (§1 "CANDIDATURES
+ * REÇUES — WORKFLOW OBLIGATOIRE") — mêmes tokens que DashButton
+ * (rayon 10px, cible tactile 44px), format carré pour une icône.
+ * Composant local : usage unique sur cet écran.
+ */
+function IconAction({
+  icon,
+  label,
+  tone = "secondaire",
+  disabled,
+  href,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  tone?: "secondaire" | "sombre" | "danger";
+  disabled?: boolean;
+  href?: string;
+  onClick?: () => void;
+}) {
+  const classes = {
+    secondaire: "bg-white text-[#1A1917] border border-[#DDD8D1] hover:border-[#1A1917]",
+    sombre: "bg-[#1A1917] text-[#FBFAF8] border border-[#1A1917] hover:bg-[#E21D1B]",
+    danger: "bg-white text-[#6B6660] border border-[#DDD8D1] hover:border-[#8E2A26] hover:text-[#8E2A26]",
+  }[tone];
+  const commun = `inline-flex size-11 shrink-0 items-center justify-center rounded-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${classes}`;
+
+  if (href && !disabled) {
+    return (
+      <Link href={href} aria-label={label} title={label} className={commun}>
+        {icon}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className={commun}>
+      {icon}
+    </button>
+  );
+}
 
 type Filtre = "toutes" | "a_examiner" | "ecartees";
 
@@ -35,12 +79,22 @@ export function EcranCandidatures({ offres }: { offres: OffreAvecCandidatures[] 
     startTransition(async () => {
       const res = await retenirCandidature(id);
       if (res.success && res.missionId) router.push(`/missions/${res.missionId}`);
-      else router.refresh();
+      else {
+        if (!res.success) toast.error(res.error);
+        router.refresh();
+      }
     });
   }
   function reintegrer(id: string) {
     startTransition(() => {
       reintegrerCandidature(id).then(() => router.refresh());
+    });
+  }
+  function refuser(id: string) {
+    startTransition(async () => {
+      const res = await refuserCandidature(id);
+      if (!res.success) toast.error(res.error);
+      router.refresh();
     });
   }
 
@@ -86,13 +140,28 @@ export function EcranCandidatures({ offres }: { offres: OffreAvecCandidatures[] 
                 <p className="text-[12.5px] text-[#6B6660]">{c.tarifMontant} € / {c.tarifType === "horaire" ? "heure" : "jour"}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Link href={`/prestataires/${c.prestataire_id}`}>
-                  <DashButton variant="secondaire">Consulter le profil</DashButton>
-                </Link>
                 {c.statut === "en_attente" && (
-                  <DashButton variant="plein" disabled={enCours} onClick={() => retenir(c.id)}>
-                    Retenir
-                  </DashButton>
+                  <>
+                    <IconAction
+                      icon={<Eye className="size-[18px]" />}
+                      label="Consulter le profil"
+                      href={`/client/candidats/${c.id}`}
+                    />
+                    <IconAction
+                      icon={<Mail className="size-[18px]" />}
+                      label={c.profil_consulte_le ? "Retenir — ouvrir la conversation" : "Consultez d'abord le profil"}
+                      tone="sombre"
+                      disabled={enCours || !c.profil_consulte_le}
+                      onClick={() => retenir(c.id)}
+                    />
+                    <IconAction
+                      icon={<Trash2 className="size-[18px]" />}
+                      label="Ne pas retenir"
+                      tone="danger"
+                      disabled={enCours}
+                      onClick={() => refuser(c.id)}
+                    />
+                  </>
                 )}
                 {c.statut === "refusee" && (
                   <DashButton variant="secondaire" disabled={enCours} onClick={() => reintegrer(c.id)}>
@@ -107,7 +176,7 @@ export function EcranCandidatures({ offres }: { offres: OffreAvecCandidatures[] 
 
       {toutesCandidatures.length > 0 && (
         <p className="text-[12.5px] leading-relaxed text-[#6B6660]">
-          Retenir un candidat ouvre la conversation et lui transmet les détails de la mission. Le paiement n&apos;intervient qu&apos;après son acceptation.
+          Consultez le profil avant de pouvoir retenir un candidat. Retenir ouvre la conversation et transmet les détails de la mission — le paiement n&apos;intervient qu&apos;après acceptation du devis.
         </p>
       )}
     </div>

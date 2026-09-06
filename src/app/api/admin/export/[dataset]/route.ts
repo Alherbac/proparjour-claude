@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { construireCsv } from "@/lib/csv";
 
-const DATASETS = ["missions", "paiements", "utilisateurs"] as const;
+const DATASETS = ["missions", "paiements", "utilisateurs", "offres", "justificatifs"] as const;
 type Dataset = (typeof DATASETS)[number];
 
 /**
@@ -56,7 +56,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dat
       ["mission_id", "montant", "statut", "taux_commission", "montant_commission", "created_at"],
       data ?? [],
     );
-  } else {
+  } else if (dataset === "utilisateurs") {
     const { data: utilisateurs } = await admin
       .from("users")
       .select("id, type, prenom, nom, telephone, ville, created_at")
@@ -70,6 +70,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ dat
     const emailParId = new Map(emails);
     const lignes = (utilisateurs ?? []).map((u) => ({ ...u, email: emailParId.get(u.id) ?? "" }));
     csv = construireCsv(["id", "type", "prenom", "nom", "email", "telephone", "ville", "created_at"], lignes);
+  } else if (dataset === "offres") {
+    const { data } = await admin
+      .from("offres")
+      .select("id, titre, metier, ville, date_mission, tarif_horaire, statut, created_at")
+      .order("created_at", { ascending: false });
+    csv = construireCsv(["id", "titre", "metier", "ville", "date_mission", "tarif_horaire", "statut", "created_at"], data ?? []);
+  } else {
+    const { data } = await admin
+      .from("justificatifs")
+      .select("id, prestataire_id, type_document, statut, created_at, reviewed_at")
+      .order("created_at", { ascending: false });
+    csv = construireCsv(["id", "prestataire_id", "type_document", "statut", "created_at", "reviewed_at"], data ?? []);
   }
 
   return new NextResponse(csv, {

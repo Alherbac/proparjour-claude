@@ -44,6 +44,40 @@ export async function getDemandesSuppressionEnAttente(): Promise<DemandeSuppress
   );
   const emailParId = new Map(emails);
 
+  return demandesAvecInfos(demandes, userParId, emailParId);
+}
+
+export type LigneJournalSuppression = { compteAnonymise: string; role: string | null; motif: string | null; date: string };
+
+/**
+ * Journal des comptes déjà supprimés (§5.12) — lit `admin_audit_log`
+ * (action="compte_supprime", posée par traiterDemandeSuppression) :
+ * pas de nouvelle table, la trace existe déjà et respecte
+ * l'anonymisation demandée (cible_id = uuid, jamais le nom — le
+ * compte n'existe même plus au moment de la lecture).
+ */
+export async function getJournalSuppressions(limite = 100): Promise<LigneJournalSuppression[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("admin_audit_log")
+    .select("cible_id, motif, details, created_at")
+    .eq("action", "compte_supprime")
+    .order("created_at", { ascending: false })
+    .limit(limite);
+
+  return (data ?? []).map((l) => ({
+    compteAnonymise: `${l.cible_id.slice(0, 8)}…`,
+    role: (l.details as { role?: string } | null)?.role ?? null,
+    motif: l.motif,
+    date: l.created_at,
+  }));
+}
+
+function demandesAvecInfos(
+  demandes: { id: string; user_id: string; motif: string | null; created_at: string }[],
+  userParId: Map<string, { prenom: string | null; nom: string | null; type: string | null }>,
+  emailParId: Map<string, string | null>,
+) {
   return demandes.map((d) => ({
     id: d.id,
     userId: d.user_id,

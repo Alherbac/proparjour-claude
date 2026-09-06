@@ -58,6 +58,47 @@ export async function getConversationsRecentesAdmin(): Promise<ConversationAdmin
     .sort((a, b) => new Date(b.dernierMessageLe).getTime() - new Date(a.dernierMessageLe).getTime());
 }
 
+/** Nombre de missions ayant au moins un message non lu — badge sidebar (§4). Repose sur `messages.lu`, déjà réel et posé par les deux parties (voir 0010). */
+export async function getNombreMessagesNonTraites(): Promise<number> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("messages").select("mission_id").eq("lu", false);
+  return new Set((data ?? []).map((m) => m.mission_id)).size;
+}
+
+export type EnvoiAdmin = { destinataire: string; objet: string; contenu: string | null; createdAt: string };
+
+/**
+ * "Historique" (§5.6, onglet 2) — chaque envoi admin→utilisateur passe
+ * par `creerNotification(type: "message_admin")` (voir
+ * envoyerMessageAdminUtilisateur, actions/admin-utilisateurs.ts) :
+ * pas de table `admin_messages` dédiée, la notification déjà réelle
+ * en tient lieu plutôt que d'ajouter un doublon.
+ */
+export async function getHistoriqueMessagesAdmin(limite = 100): Promise<EnvoiAdmin[]> {
+  const admin = createAdminClient();
+  const { data: notifs } = await admin
+    .from("notifications")
+    .select("user_id, titre, contenu, created_at")
+    .eq("type", "message_admin")
+    .order("created_at", { ascending: false })
+    .limit(limite);
+  if (!notifs || notifs.length === 0) return [];
+
+  const userIds = [...new Set(notifs.map((n) => n.user_id))];
+  const { data: users } = await admin.from("users").select("id, prenom, nom").in("id", userIds);
+  const userParId = new Map((users ?? []).map((u) => [u.id, u]));
+
+  return notifs.map((n) => {
+    const u = userParId.get(n.user_id);
+    return {
+      destinataire: u ? `${u.prenom ?? ""} ${u.nom ?? ""}`.trim() || "Utilisateur" : "Utilisateur",
+      objet: n.titre,
+      contenu: n.contenu,
+      createdAt: n.created_at,
+    };
+  });
+}
+
 export type ThreadAdmin = {
   mission: { id: string; lieu: string; dateMission: string };
   messages: (MessagesRow & { expediteurNom: string })[];

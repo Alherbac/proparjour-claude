@@ -63,12 +63,12 @@ export async function marquerVersementEffectue(missionLigneId: string, reference
       type: "paiement_libere",
       titre: "Virement effectué",
       contenu: `${ligne.tarif_applique} € ont été virés pour cette mission.`,
-      lien: `/tableau-de-bord/argent`,
+      lien: `/prestataire/revenus`,
       missionId: ligne.mission_id,
     });
   }
 
   revalidatePath("/admin/versements");
-  revalidatePath("/tableau-de-bord/argent");
+  revalidatePath("/prestataire/revenus");
   return { success: true };
 }

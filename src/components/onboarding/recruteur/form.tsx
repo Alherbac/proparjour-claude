@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
@@ -36,6 +37,18 @@ import { completerProfilRecruteur } from "@/app/actions/inscription";
 const INSCRIPTION_PATH = "/inscription/recruteur";
 
 export function RecruteurForm() {
+  const router = useRouter();
+  // Brouillon en cours (ex. "Publier une offre" quitté juste avant
+  // l'inscription, voir besoin-capture.tsx) — quand présent, ce
+  // formulaire redirige directement vers cette page une fois le compte
+  // créé, au lieu du RecruteurSuccessScreen générique : le client ne
+  // doit jamais recommencer son besoin après s'être identifié.
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next");
+  // Round-trip OAuth (signInWithGoogle) : revient sur CETTE page pour
+  // compléter le profil (métier, type de compte...), en conservant le
+  // même "next" pour la redirection finale après complétion.
+  const inscriptionPathAvecNext = next ? `${INSCRIPTION_PATH}?next=${encodeURIComponent(next)}` : INSCRIPTION_PATH;
   const [submitted, setSubmitted] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -122,6 +135,14 @@ export function RecruteurForm() {
         setAuthError(result.error);
         return;
       }
+      // Un besoin en cours (localStorage, lib/besoin.ts) attend son
+      // auteur exactement là où il l'a laissé — jamais l'écran de
+      // bienvenue générique dans ce cas précis (règle UX : l'inscription
+      // n'est qu'une étape d'identification, pas un nouveau départ).
+      if (next) {
+        router.push(next);
+        return;
+      }
       setSubmitted(true);
     } finally {
       setSubmitting(false);
@@ -129,7 +150,7 @@ export function RecruteurForm() {
   }
 
   async function handleGoogleClick() {
-    const { error } = await signInWithGoogle(INSCRIPTION_PATH);
+    const { error } = await signInWithGoogle(inscriptionPathAvecNext);
     if (error) setAuthError(error.message);
   }
 
@@ -152,7 +173,15 @@ export function RecruteurForm() {
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Cliquez sur le lien reçu par e-mail pour confirmer votre compte,
-            puis reconnectez-vous pour terminer votre inscription.
+            puis{" "}
+            <Link
+              href={next ? `/connexion?next=${encodeURIComponent(next)}` : "/connexion"}
+              className="font-medium text-primary underline"
+            >
+              reconnectez-vous
+            </Link>{" "}
+            pour terminer votre inscription.
+            {next && " Votre besoin en cours vous attendra à votre retour."}
           </p>
         </div>
       </div>

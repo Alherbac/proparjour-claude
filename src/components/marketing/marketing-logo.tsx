@@ -7,19 +7,26 @@ import { cn } from "@/lib/utils";
  * (refonte 110790prodesign, Lot 0) + mot-symbole en Instrument
  * Serif, distinct du <Logo/> partagé (carré "P" rouge) utilisé dans
  * le dashboard/admin.
+ *
+ * `href` par défaut "/" — le seul cas où Header/Footer le forcent
+ * ailleurs est un prestataire connecté qui navigue sur une page
+ * marketing (ex. /prestataires) : il revient à son propre espace,
+ * jamais à la landing client (correction UX pré-lancement).
  */
 export function MarketingLogo({
   tone = "dark",
   height = 26,
   className,
+  href = "/",
 }: {
   tone?: "dark" | "light";
   height?: number;
   className?: string;
+  href?: string;
 }) {
   return (
     <Link
-      href="/"
+      href={href}
       className={cn(
         "flex shrink-0 items-center gap-[9px] font-display-serif text-[23px] leading-none tracking-tight",
         tone === "light" ? "text-white" : "text-ppj-ink",

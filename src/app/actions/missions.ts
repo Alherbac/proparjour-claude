@@ -1,10 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
 import { creerNotification } from "@/lib/notifications";
 import { creerMessageSysteme, creerMessageDevis } from "@/lib/messages";
+import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
 import { montantAPayer } from "@/app/actions/paiement-mission";
 import { heuresEntre } from "@/lib/duree";
 import {
@@ -175,6 +177,380 @@ export async function repondreMissionLigne(
     });
   }
 
+  return { success: true };
+}
+
+/**
+ * Le prestataire propose son devis dans la conversation, après avoir
+ * échangé avec le client — jamais l'inverse (voir repondreCandidature,
+ * actions/offres.ts, qui n'envoie plus de devis automatique depuis la
+ * correction UX critique du parcours candidature). Part toujours à
+ * "en_attente" : c'est le client qui l'accepte explicitement
+ * (accepterDevis) avant que le paiement ne devienne possible.
+ */
+export async function envoyerDevis(
+  missionId: string,
+  destinataireId: string,
+  devis: { prestation: string; date: string; heureDebut: string; heureFin: string; lieu: string; tarifHoraire: number; montantTotal: number },
+): Promise<ActionResult> {
+  const supabaseServer = await createClient();
+  const {
+    data: { user },
+  } = await supabaseServer.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: profil } = await admin.from("prestataires_profils").select("id").eq("user_id", user.id).maybeSingle();
+  if (!profil) {
+    return { success: false, error: "Seul un prestataire peut envoyer un devis." };
+  }
+  const { data: ligne } = await admin
+    .from("mission_lignes")
+    .select("id")
+    .eq("mission_id", missionId)
+    .eq("prestataire_id", profil.id)
+    .maybeSingle();
+  if (!ligne) {
+    return { success: false, error: "Cette mission ne vous concerne pas." };
+  }
+
+  const { data: devisExistant } = await admin
+    .from("messages")
+    .select("id, metadata")
+    .eq("mission_id", missionId)
+    .eq("expediteur_id", user.id)
+    .eq("destinataire_id", destinataireId)
+    .eq("type", "devis")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const statutExistant = (devisExistant?.metadata as { statut?: string } | null)?.statut;
+  if (devisExistant && statutExistant !== "ajustement_demande") {
+    return { success: false, error: "Un devis est déjà en attente de réponse pour cette conversation." };
+  }
+
+  // Même contrôle serveur que pour les messages libres (voir
+  // envoyerMessage, actions/messages.ts) : la prestation et le lieu
+  // sont les deux seuls champs libres d'un devis, jamais bloqué sur
+  // les champs contraints (date, horaires, tarif).
+  for (const champ of [devis.prestation, devis.lieu]) {
+    const coordonnees = detecterCoordonnees(champ);
+    if (coordonnees) {
+      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
+    }
+  }
+
+  await creerMessageDevis({
+    missionId,
+    expediteurId: user.id,
+    destinataireId,
+    devis: { ...devis, statut: "en_attente" },
+  });
+
+  await creerNotification({
+    userId: destinataireId,
+    type: "devis_envoye",
+    titre: "Devis reçu",
+    contenu: `${devis.prestation} — ${devis.montantTotal} €`,
+    lien: `/missions/${missionId}`,
+    missionId,
+  });
+
+  revalidatePath(`/missions/${missionId}`);
+  return { success: true };
+}
+
+type MessageDevis = {
+  id: string;
+  mission_id: string;
+  expediteur_id: string;
+  destinataire_id: string;
+  type: string;
+  metadata: unknown;
+};
+
+/**
+ * Vrai seulement si `message` est le devis le plus récent échangé
+ * entre ce binôme expéditeur/destinataire sur cette mission — jamais
+ * confié à l'interface (qui ne rend de toute façon que la dernière
+ * carte comme "actionnable"), revérifié ici pour qu'une ancienne
+ * version ne puisse jamais être acceptée/ajustée/déclinée après coup
+ * (référence directe conservée, appel API rejoué, etc.).
+ */
+async function estDevisActif(admin: SupabaseClient<Database>, message: MessageDevis): Promise<boolean> {
+  const { data: dernier } = await admin
+    .from("messages")
+    .select("id")
+    .eq("mission_id", message.mission_id)
+    .eq("expediteur_id", message.expediteur_id)
+    .eq("destinataire_id", message.destinataire_id)
+    .eq("type", "devis")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return dernier?.id === message.id;
+}
+
+/**
+ * Charge un message-devis et vérifie que `userId` est bien celui à
+ * qui répondre revient. `role` distingue les deux sens de réponse
+ * possibles sur un devis : le CLIENT (destinataire) répond à un devis
+ * "en_attente" (accepter / ajuster / décliner) ; le PRESTATAIRE
+ * (expéditeur) ne reprend la main que sur un devis "ajustement_demande"
+ * (nouveau devis, ou décliner — voir declinerDevis). Revérifie aussi
+ * que ce devis est bien l'actif (voir estDevisActif) et que son statut
+ * courant correspond à ce que l'appelant attend, pour ne jamais agir
+ * sur un devis déjà répondu ou remplacé.
+ */
+async function getMessageDevisPourReponse(
+  admin: SupabaseClient<Database>,
+  messageId: string,
+  userId: string,
+  role: "destinataire" | "expediteur",
+  statutAttendu: string,
+): Promise<{ ok: true; message: MessageDevis } | { ok: false; error: string }> {
+  const { data: message } = await admin
+    .from("messages")
+    .select("id, mission_id, expediteur_id, destinataire_id, type, metadata")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (!message || message.type !== "devis") return { ok: false, error: "Devis introuvable." };
+
+  const idAttendu = role === "destinataire" ? message.destinataire_id : message.expediteur_id;
+  if (idAttendu !== userId) return { ok: false, error: "Ce devis ne vous est pas adressé." };
+
+  if (!(await estDevisActif(admin, message))) {
+    return { ok: false, error: "Ce devis n'est plus la version active de la négociation." };
+  }
+
+  const statutActuel = (message.metadata as { statut?: string } | null)?.statut ?? "acceptee";
+  if (statutActuel !== statutAttendu) {
+    return { ok: false, error: "Ce devis a déjà reçu une réponse." };
+  }
+
+  return { ok: true, message };
+}
+
+/**
+ * Acceptation explicite du devis par le client — action distincte de
+ * "Retenir" une candidature (voir repondreCandidature) : c'est ici,
+ * et seulement ici, que le paiement devient possible (voir
+ * missions/[id]/page.tsx, aUnDevisAccepte).
+ */
+export async function accepterDevis(messageId: string): Promise<ActionResult> {
+  const supabaseServer = await createClient();
+  const {
+    data: { user },
+  } = await supabaseServer.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const admin = createAdminClient();
+  const resultat = await getMessageDevisPourReponse(admin, messageId, user.id, "destinataire", "en_attente");
+  if (!resultat.ok) {
+    return { success: false, error: resultat.error };
+  }
+  const { message } = resultat;
+
+  const { error } = await admin
+    .from("messages")
+    .update({ metadata: { ...(message.metadata as object), statut: "acceptee" } })
+    .eq("id", messageId);
+  if (error) {
+    return { success: false, error: traduireErreurDb(error, "Impossible d'accepter ce devis pour le moment.") };
+  }
+
+  // Le montant réellement facturé (montantAPayer, actions/paiement-mission.ts)
+  // vient de mission_lignes.tarif_applique, jamais relu depuis le devis
+  // au moment du paiement — sans cette mise à jour, un devis négocié à
+  // la baisse (ou à la hausse) après un ajustement n'aurait aucun effet
+  // sur ce que le client paie réellement : bug trouvé en vérification
+  // live, corrigé ici plutôt que dans montantAPayer pour que la ligne
+  // reflète, à tout moment, les derniers termes réellement acceptés.
+  const devisAccepte = message.metadata as { montantTotal?: number } | null;
+  if (typeof devisAccepte?.montantTotal === "number") {
+    const { data: profilPrestataire } = await admin
+      .from("prestataires_profils")
+      .select("id")
+      .eq("user_id", message.expediteur_id)
+      .maybeSingle();
+    if (profilPrestataire) {
+      await admin
+        .from("mission_lignes")
+        .update({ tarif_applique: devisAccepte.montantTotal })
+        .eq("mission_id", message.mission_id)
+        .eq("prestataire_id", profilPrestataire.id);
+    }
+
+    // Même correctif pour l'onglet "Détail" (voir detail-mission-tabs.tsx,
+    // qui lit paiements.montant/montant_commission — un panneau
+    // d'affichage séparé de mission_lignes, sinon toujours désynchronisé
+    // du montant réellement payable après une négociation.
+    const { data: paiementExistant } = await admin
+      .from("paiements")
+      .select("taux_commission")
+      .eq("mission_id", message.mission_id)
+      .maybeSingle();
+    if (paiementExistant) {
+      const nouvelleCommission = Math.round(devisAccepte.montantTotal * (paiementExistant.taux_commission / 100) * 100) / 100;
+      await admin
+        .from("paiements")
+        .update({ montant: devisAccepte.montantTotal, montant_commission: nouvelleCommission })
+        .eq("mission_id", message.mission_id);
+    }
+  }
+
+  await creerMessageSysteme({
+    missionId: message.mission_id,
+    expediteurId: user.id,
+    destinataireId: message.expediteur_id,
+    contenu: "✅ A accepté le devis.",
+  });
+  await creerNotification({
+    userId: message.expediteur_id,
+    type: "devis_accepte",
+    titre: "Devis accepté",
+    contenu: "Le client a accepté votre devis — en attente de paiement.",
+    lien: `/missions/${message.mission_id}`,
+    missionId: message.mission_id,
+  });
+
+  revalidatePath(`/missions/${message.mission_id}`);
+  return { success: true };
+}
+
+/**
+ * Le client demande un ajustement plutôt que d'accepter tel quel — le
+ * prestataire peut alors envoyer un nouveau devis dans le même fil
+ * (envoyerDevis l'autorise tant que le dernier est à "ajustement_demande").
+ */
+export async function demanderAjustementDevis(messageId: string, note: string): Promise<ActionResult> {
+  const supabaseServer = await createClient();
+  const {
+    data: { user },
+  } = await supabaseServer.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const admin = createAdminClient();
+  const resultat = await getMessageDevisPourReponse(admin, messageId, user.id, "destinataire", "en_attente");
+  if (!resultat.ok) {
+    return { success: false, error: resultat.error };
+  }
+  const { message } = resultat;
+  const noteTrimmed = note.trim().slice(0, 500);
+
+  const { error } = await admin
+    .from("messages")
+    .update({
+      metadata: { ...(message.metadata as object), statut: "ajustement_demande", noteAjustement: noteTrimmed || undefined },
+    })
+    .eq("id", messageId);
+  if (error) {
+    return { success: false, error: traduireErreurDb(error, "Impossible d'envoyer votre demande pour le moment.") };
+  }
+
+  await creerMessageSysteme({
+    missionId: message.mission_id,
+    expediteurId: user.id,
+    destinataireId: message.expediteur_id,
+    contenu: noteTrimmed ? `✏️ A demandé un ajustement du devis : « ${noteTrimmed} »` : "✏️ A demandé un ajustement du devis.",
+  });
+  await creerNotification({
+    userId: message.expediteur_id,
+    type: "devis_ajustement_demande",
+    titre: "Ajustement demandé",
+    contenu: noteTrimmed || "Le client souhaite un ajustement de votre devis.",
+    lien: `/missions/${message.mission_id}`,
+    missionId: message.mission_id,
+  });
+
+  revalidatePath(`/missions/${message.mission_id}`);
+  return { success: true };
+}
+
+/**
+ * Décliner un devis — deux cas, symétriques (voir §2 "DEVIS / DEVIS —
+ * WORKFLOW COMPLET") :
+ *  - le CLIENT décline un devis fraîchement reçu ("en_attente"), sans
+ *    passer par une demande d'ajustement ;
+ *  - le PRESTATAIRE, après avoir reçu une demande d'ajustement
+ *    ("ajustement_demande"), choisit de ne pas en renvoyer un plutôt
+ *    que de reprendre la main avec une nouvelle version.
+ * Dans les deux cas, le devis passe à "refusee" — un statut terminal :
+ * envoyerDevis n'autorise un nouveau devis que si le dernier est
+ * "ajustement_demande", jamais "refusee", donc la négociation s'arrête
+ * réellement là. Ni la mission ni la candidature ne sont annulées ici
+ * (aucune des deux parties n'est encore engagée à ce stade — voir
+ * repondreCandidature, actions/offres.ts) : c'est au recruteur
+ * d'annuler la mission séparément (annulerMission) s'il le souhaite.
+ */
+export async function declinerDevis(messageId: string): Promise<ActionResult> {
+  const supabaseServer = await createClient();
+  const {
+    data: { user },
+  } = await supabaseServer.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const admin = createAdminClient();
+  const { data: message } = await admin
+    .from("messages")
+    .select("id, mission_id, expediteur_id, destinataire_id, type, metadata")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (!message || message.type !== "devis") {
+    return { success: false, error: "Devis introuvable." };
+  }
+
+  const estClient = message.destinataire_id === user.id;
+  const estPrestataire = message.expediteur_id === user.id;
+  if (!estClient && !estPrestataire) {
+    return { success: false, error: "Ce devis ne vous concerne pas." };
+  }
+
+  if (!(await estDevisActif(admin, message))) {
+    return { success: false, error: "Ce devis n'est plus la version active de la négociation." };
+  }
+
+  const statutActuel = (message.metadata as { statut?: string } | null)?.statut ?? "acceptee";
+  const autoriseClient = estClient && statutActuel === "en_attente";
+  const autorisePrestataire = estPrestataire && statutActuel === "ajustement_demande";
+  if (!autoriseClient && !autorisePrestataire) {
+    return { success: false, error: "Ce devis ne peut pas être décliné dans son état actuel." };
+  }
+
+  const { error } = await admin
+    .from("messages")
+    .update({ metadata: { ...(message.metadata as object), statut: "refusee" } })
+    .eq("id", messageId);
+  if (error) {
+    return { success: false, error: traduireErreurDb(error, "Impossible de décliner ce devis pour le moment.") };
+  }
+
+  const destinataireNotif = estClient ? message.expediteur_id : message.destinataire_id;
+  await creerMessageSysteme({
+    missionId: message.mission_id,
+    expediteurId: user.id,
+    destinataireId: destinataireNotif,
+    contenu: estClient ? "❌ A décliné le devis." : "❌ Le professionnel a décliné la demande d'ajustement.",
+  });
+  await creerNotification({
+    userId: destinataireNotif,
+    type: "devis_refuse",
+    titre: "Devis décliné",
+    contenu: estClient ? "Le client a décliné votre devis." : "Le professionnel ne donnera pas suite à votre demande d'ajustement.",
+    lien: `/missions/${message.mission_id}`,
+    missionId: message.mission_id,
+  });
+
+  revalidatePath(`/missions/${message.mission_id}`);
   return { success: true };
 }
 
@@ -542,4 +918,50 @@ export async function rafraichirLignePrestataire(missionId: string): Promise<Lig
 
 export async function rafraichirMissionRecruteur(missionId: string): Promise<MissionAvecLignes | null> {
   return getMissionPourFacture(missionId);
+}
+
+const CHAMPS_INFORMATIONS_MISSION = ["modalites_acces", "contact_sur_place", "consignes_particulieres"] as const;
+type ChampInformationMission = (typeof CHAMPS_INFORMATIONS_MISSION)[number];
+
+/**
+ * Carte "Informations manquantes" du Détail mission (dossier design) —
+ * migration 0042. Seul le recruteur de la mission peut compléter ces
+ * champs, réservés au client (le prestataire les consulte via le
+ * contexte/la messagerie, jamais éditables de son côté).
+ */
+export async function mettreAJourInformationsMission(
+  missionId: string,
+  champ: ChampInformationMission,
+  valeur: string,
+): Promise<ActionResult> {
+  if (!CHAMPS_INFORMATIONS_MISSION.includes(champ)) {
+    return { success: false, error: "Champ inconnu." };
+  }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "Vous devez être connecté." };
+  }
+
+  const { data: mission } = await supabase.from("missions").select("recruteur_id").eq("id", missionId).maybeSingle();
+  if (!mission || mission.recruteur_id !== user.id) {
+    return { success: false, error: "Mission introuvable." };
+  }
+
+  const valeurNettoyee = valeur.trim() || null;
+  const requete =
+    champ === "modalites_acces"
+      ? supabase.from("missions").update({ modalites_acces: valeurNettoyee })
+      : champ === "contact_sur_place"
+        ? supabase.from("missions").update({ contact_sur_place: valeurNettoyee })
+        : supabase.from("missions").update({ consignes_particulieres: valeurNettoyee });
+  const { error } = await requete.eq("id", missionId);
+  if (error) {
+    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer cette information pour le moment.") };
+  }
+
+  revalidatePath(`/missions/${missionId}`);
+  return { success: true };
 }

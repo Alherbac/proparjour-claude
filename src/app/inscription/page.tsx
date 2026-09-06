@@ -9,7 +9,16 @@ export const metadata: Metadata = {
   description: "Créez votre compte prestataire ou recruteur sur ProParJour.",
 };
 
-export default function InscriptionPage() {
+export default async function InscriptionPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const nextRaw = sp.next;
+  const next = Array.isArray(nextRaw) ? nextRaw[0] : nextRaw;
+  const hrefRecruteur = next ? `/inscription/recruteur?next=${encodeURIComponent(next)}` : "/inscription/recruteur";
+
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-secondary/30 px-4 py-16">
       <div className="mb-8">
@@ -27,7 +36,7 @@ export default function InscriptionPage() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <Link
-            href="/inscription/recruteur"
+            href={hrefRecruteur}
             className="group rounded-2xl border border-border bg-background p-6 shadow-sm transition-colors hover:border-primary"
           >
             <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
