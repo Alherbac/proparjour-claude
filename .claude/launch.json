@@ -5,7 +5,7 @@
       "name": "proparjour-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "/Users/diallocherif/Proparjour claude", "run", "dev"],
-      "port": 3000
+      "autoPort": true
     }
   ]
 }

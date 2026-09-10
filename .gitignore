@@ -52,3 +52,7 @@ next-env.d.ts
 /Asia design proparjour/
 /Claude Istanbul 1/
 /110790prodesign/
+
+# copie de sauvegarde du projet, jamais compilée ni commitée
+# (exclue aussi de tsconfig.json)
+/_archive/

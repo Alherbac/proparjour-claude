@@ -178,6 +178,20 @@ export type PrestatairesPublicsRow = {
   created_at: string;
 };
 
+// Vitrine page d'accueil (PhotoBand) — voir migration 0049. Colonnes
+// d'affichage uniquement ; contrairement à PrestatairesPublicsRow,
+// inclut les profils non encore validés.
+export type PrestatairesVitrineRow = {
+  id: string;
+  metier: MetierType;
+  titre: string | null;
+  ville: string;
+  photo_url: string | null;
+  statut_verification: StatutVerificationType;
+  created_at: string;
+  prenom: string | null;
+};
+
 export type MissionsRow = {
   id: string;
   recruteur_id: string;
@@ -701,6 +715,10 @@ export type Database = {
     Views: {
       prestataires_publics: {
         Row: PrestatairesPublicsRow;
+        Relationships: [];
+      };
+      prestataires_vitrine: {
+        Row: PrestatairesVitrineRow;
         Relationships: [];
       };
       avis_publics: {
