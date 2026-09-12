@@ -21,7 +21,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { completerProfilPrestataire } from "@/app/actions/inscription";
-import { uploaderPhotoProfil } from "@/lib/avatar-upload";
+import { uploaderPhotoProfil, validerPhotoProfil } from "@/lib/avatar-upload";
 
 const STORAGE_KEY = "proparjour:onboarding-prestataire:v2";
 const INSCRIPTION_PATH = "/inscription/prestataire";
@@ -118,6 +118,12 @@ export function PrestataireWizard() {
   }
 
   function handlePhotoSelect(file: File) {
+    const invalide = validerPhotoProfil(file);
+    if (invalide) {
+      setAuthError(invalide);
+      return;
+    }
+    setAuthError(null);
     setPhotoFile(file);
     setPhotoPreviewUrl(URL.createObjectURL(file));
     setNudge(null);

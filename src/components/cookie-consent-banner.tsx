@@ -56,7 +56,7 @@ export function CookieConsentBanner() {
             <p className="mt-1 text-sm text-muted-foreground">
               ProParJour utilise des cookies essentiels au fonctionnement du site (session, panier). Avec votre
               accord, nous pourrions aussi mesurer l&apos;audience du site.{" "}
-              <a href="/cgu" className="underline underline-offset-2 hover:text-foreground">
+              <a href="/confidentialite" className="underline underline-offset-2 hover:text-foreground">
                 En savoir plus
               </a>
               .

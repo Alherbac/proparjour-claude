@@ -13,9 +13,10 @@ import {
   ajouterExperience,
   supprimerExperience,
   enregistrerJustificatif,
-  demanderSuppressionComptePrestataire,
   type ExperienceInput,
 } from "@/app/prestataire/actions";
+import { demanderSuppressionCompte } from "@/app/actions/suppression-compte";
+import { validerPhotoProfil, extensionAvatar, AVATAR_ACCEPT_ATTR } from "@/lib/avatar-upload";
 import type { ExperiencesRow, JustificatifsRow } from "@/lib/supabase/database.types";
 
 type ExperienceAuto = { id: string; intitule: string; lieu: string; date: string };
@@ -51,6 +52,11 @@ function CartePhoto({ photoUrlInitial }: { photoUrlInitial: string | null }) {
   async function choisirFichier(e: React.ChangeEvent<HTMLInputElement>) {
     const fichier = e.target.files?.[0];
     if (!fichier) return;
+    const invalide = validerPhotoProfil(fichier);
+    if (invalide) {
+      setErreur(invalide);
+      return;
+    }
     setEnvoi(true);
     setErreur(null);
     const supabase = creerClientNavigateur();
@@ -62,8 +68,7 @@ function CartePhoto({ photoUrlInitial }: { photoUrlInitial: string | null }) {
       setEnvoi(false);
       return;
     }
-    const extension = fichier.name.split(".").pop() ?? "jpg";
-    const chemin = `${user.id}/profile.${extension}`;
+    const chemin = `${user.id}/profile.${extensionAvatar(fichier)}`;
     const { error: uploadError } = await supabase.storage.from("avatars").upload(chemin, fichier, { contentType: fichier.type, upsert: true });
     if (uploadError) {
       setErreur("Impossible d'envoyer cette photo pour le moment.");
@@ -104,7 +109,7 @@ function CartePhoto({ photoUrlInitial }: { photoUrlInitial: string | null }) {
           {erreur && <p className="mt-1 text-[12.5px]" style={{ color: "#8E2A26" }}>{erreur}</p>}
           <div className="mt-3 flex gap-2">
             <label>
-              <input type="file" accept="image/*" className="hidden" onChange={choisirFichier} disabled={envoi} />
+              <input type="file" accept={AVATAR_ACCEPT_ATTR} className="hidden" onChange={choisirFichier} disabled={envoi} />
               <span className="inline-flex min-h-[38px] cursor-pointer items-center rounded-[10px] bg-[#1A1917] px-3.5 text-[12.5px] font-semibold text-[#FBFAF8] hover:bg-[#E21D1B]">
                 {envoi ? "Envoi..." : "Remplacer la photo"}
               </span>
@@ -272,7 +277,7 @@ function CarteSuppression() {
   function confirmer() {
     if (!motif) return;
     startTransition(async () => {
-      const res = await demanderSuppressionComptePrestataire(motif);
+      const res = await demanderSuppressionCompte(motif);
       setResultat(res.success ? { ok: true, message: "Votre demande a été enregistrée." } : { ok: false, message: res.error });
     });
   }

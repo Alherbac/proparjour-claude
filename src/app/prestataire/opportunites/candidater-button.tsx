@@ -15,7 +15,18 @@ const STATUT_LABEL: Record<CandidatureStatutType, { label: string; tone: "vert" 
 };
 
 /** Même action réelle que l'ancien CandidaterButton (postulerOffre) — seule l'interface change. */
-export function CandidaterButton({ offreId, statutInitial, postulable }: { offreId: string; statutInitial: CandidatureStatutType | undefined; postulable: boolean }) {
+export function CandidaterButton({
+  offreId,
+  statutInitial,
+  postulable,
+  raisonBlocage,
+}: {
+  offreId: string;
+  statutInitial: CandidatureStatutType | undefined;
+  postulable: boolean;
+  /** Message affiché à la place du bouton (ex. profil non vérifié) — audit prod I4. */
+  raisonBlocage?: string;
+}) {
   const [isPending, startTransition] = useTransition();
   const [statut, setStatut] = useState(statutInitial);
 
@@ -34,6 +45,10 @@ export function CandidaterButton({ offreId, statutInitial, postulable }: { offre
   if (statut) {
     const info = STATUT_LABEL[statut];
     return <Badge tone={info.tone}>{info.label}</Badge>;
+  }
+
+  if (raisonBlocage) {
+    return <p className="text-[13px] text-[#6B6660]">{raisonBlocage}</p>;
   }
 
   if (!postulable) {

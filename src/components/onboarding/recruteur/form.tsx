@@ -32,6 +32,7 @@ import { MESSAGE_HORS_ZONE } from "@/config/zones-couverture";
 import { VilleAutocompleteIdf } from "@/components/ville-autocomplete-idf";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
+import { cheminInterneOuNull } from "@/lib/redirection";
 import { completerProfilRecruteur } from "@/app/actions/inscription";
 
 const INSCRIPTION_PATH = "/inscription/recruteur";
@@ -44,7 +45,10 @@ export function RecruteurForm() {
   // créé, au lieu du RecruteurSuccessScreen générique : le client ne
   // doit jamais recommencer son besoin après s'être identifié.
   const searchParams = useSearchParams();
-  const next = searchParams.get("next");
+  // Filtré (audit prod I2) : uniquement un chemin interne, jamais une
+  // URL externe — ce `next` finit dans un router.push() après création
+  // du compte.
+  const next = cheminInterneOuNull(searchParams.get("next"));
   // Round-trip OAuth (signInWithGoogle) : revient sur CETTE page pour
   // compléter le profil (métier, type de compte...), en conservant le
   // même "next" pour la redirection finale après complétion.

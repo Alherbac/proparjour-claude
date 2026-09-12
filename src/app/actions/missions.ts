@@ -111,7 +111,7 @@ export async function repondreMissionLigne(
     // "proparjour 6-7" §8 — mission née du panier → "Proposer la
     // mission" (actions/proposition.ts) : personne n'avait encore
     // consenti à rien, donc aucun devis n'a été envoyé à la création
-    // (contrairement à repondreCandidature, où le consentement du
+    // (contrairement à retenirCandidature, où le consentement du
     // prestataire est acquis dès la candidature). Cette première
     // acceptation est donc le tout premier moment où un paiement
     // devient possible — on envoie alors la carte de devis existante
@@ -182,7 +182,7 @@ export async function repondreMissionLigne(
 
 /**
  * Le prestataire propose son devis dans la conversation, après avoir
- * échangé avec le client — jamais l'inverse (voir repondreCandidature,
+ * échangé avec le client — jamais l'inverse (voir retenirCandidature,
  * actions/offres.ts, qui n'envoie plus de devis automatique depuis la
  * correction UX critique du parcours candidature). Part toujours à
  * "en_attente" : c'est le client qui l'accepte explicitement
@@ -336,7 +336,7 @@ async function getMessageDevisPourReponse(
 
 /**
  * Acceptation explicite du devis par le client — action distincte de
- * "Retenir" une candidature (voir repondreCandidature) : c'est ici,
+ * "Retenir" une candidature (voir retenirCandidature) : c'est ici,
  * et seulement ici, que le paiement devient possible (voir
  * missions/[id]/page.tsx, aUnDevisAccepte).
  */
@@ -487,7 +487,7 @@ export async function demanderAjustementDevis(messageId: string, note: string): 
  * "ajustement_demande", jamais "refusee", donc la négociation s'arrête
  * réellement là. Ni la mission ni la candidature ne sont annulées ici
  * (aucune des deux parties n'est encore engagée à ce stade — voir
- * repondreCandidature, actions/offres.ts) : c'est au recruteur
+ * retenirCandidature, client/actions.ts) : c'est au recruteur
  * d'annuler la mission séparément (annulerMission) s'il le souhaite.
  */
 export async function declinerDevis(messageId: string): Promise<ActionResult> {

@@ -31,7 +31,10 @@ export async function demanderSuppressionCompte(motif: string): Promise<ActionRe
   }
 
   const { data: profil } = await supabase.from("users").select("type").eq("id", user.id).maybeSingle();
-  const statutsActifs: MissionStatutType[] = ["en_attente", "confirmee", "en_cours"];
+  // Inclut "litige" : un différend ouvert doit être clos avant qu'un
+  // compte partie prenante ne disparaisse (fusion des 3 anciennes
+  // implémentations — audit prod).
+  const statutsActifs: MissionStatutType[] = ["en_attente", "confirmee", "en_cours", "litige"];
   let missionActive: { id: string; lieu: string; date_mission: string } | null = null;
   if (profil?.type === "prestataire") {
     const { data: profilPrestataire } = await supabase.from("prestataires_profils").select("id").eq("user_id", user.id).maybeSingle();

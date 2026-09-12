@@ -1,7 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdminRole } from "@/lib/admin/auth";
+import { requireAdminSession } from "@/lib/admin/auth";
 import { creerNotification } from "@/lib/notifications";
 import { traduireErreurDb } from "@/lib/erreurs-db";
 import { journaliser } from "@/lib/admin/audit";
@@ -15,7 +15,7 @@ type ActionResult<T = undefined> =
 export async function chargerDetailKyc(
   profilId: string,
 ): Promise<ActionResult<{ dossier: DossierKyc; verifications: VerificationAuto[]; credibilite: number } | null>> {
-  await requireAdminRole();
+  await requireAdminSession();
   const dossier = await getDossierKyc(profilId);
   if (!dossier) return { success: true, data: null };
   const admin = createAdminClient();
@@ -25,16 +25,15 @@ export async function chargerDetailKyc(
 
 /**
  * Révèle l'IBAN/BIC — journalisé à chaque appel (donnée sensible).
- * Précision honnête : ces colonnes sont stockées en clair (migration
- * 0029, pas de chiffrement au repos), donc "déchiffrer" ici veut dire
- * "afficher" — le masquage 30 s côté client reste une bonne pratique
- * d'accès, mais ne doit pas laisser croire à un chiffrement qui
- * n'existe pas. Voir rapport final.
+ * Depuis la migration 0053, ces coordonnées sont chiffrées au repos
+ * (pgp_sym_encrypt, clé Supabase Vault) : le déchiffrement passe par
+ * la fonction `reveler_rib`, réservée à `service_role` (client admin).
+ * Le masquage 30 s côté client reste une bonne pratique d'accès.
  */
 export async function reveleIbanDossier(profilId: string): Promise<ActionResult<{ iban: string | null; bic: string | null }>> {
-  const session = await requireAdminRole();
+  const session = await requireAdminSession();
   const admin = createAdminClient();
-  const { data } = await admin.from("prestataires_profils").select("iban, bic").eq("id", profilId).maybeSingle();
+  const { data } = await admin.rpc("reveler_rib", { p_profil_id: profilId }).maybeSingle();
 
   await journaliser({
     adminId: session.userId,
@@ -47,7 +46,7 @@ export async function reveleIbanDossier(profilId: string): Promise<ActionResult<
 }
 
 export async function validerJustificatif(justificatifId: string): Promise<ActionResult> {
-  const session = await requireAdminRole();
+  const session = await requireAdminSession();
   const admin = createAdminClient();
   const { error } = await admin
     .from("justificatifs")
@@ -63,7 +62,7 @@ export async function validerJustificatif(justificatifId: string): Promise<Actio
 }
 
 export async function refuserJustificatif(justificatifId: string, motif: string): Promise<ActionResult> {
-  const session = await requireAdminRole();
+  const session = await requireAdminSession();
   if (!motif.trim()) {
     return { success: false, error: "Merci de préciser un motif de refus." };
   }
@@ -87,7 +86,7 @@ export async function refuserJustificatif(justificatifId: string, motif: string)
  * action, même si des documents manquent ou sont encore en attente.
  */
 export async function validerDossier(profilId: string): Promise<ActionResult> {
-  await requireAdminRole();
+  await requireAdminSession();
   const admin = createAdminClient();
 
   const { data: profil } = await admin
@@ -115,7 +114,7 @@ export async function validerDossier(profilId: string): Promise<ActionResult> {
 }
 
 export async function refuserDossier(profilId: string, motif: string): Promise<ActionResult> {
-  await requireAdminRole();
+  await requireAdminSession();
   if (!motif.trim()) {
     return { success: false, error: "Merci de préciser un motif de refus." };
   }
@@ -146,7 +145,7 @@ export async function refuserDossier(profilId: string, motif: string): Promise<A
 }
 
 export async function demanderDocument(profilId: string, message: string): Promise<ActionResult> {
-  await requireAdminRole();
+  await requireAdminSession();
   const admin = createAdminClient();
 
   const { data: profil } = await admin
@@ -174,7 +173,7 @@ export async function demanderDocument(profilId: string, message: string): Promi
 export async function obtenirUrlSigneeJustificatif(
   storagePath: string,
 ): Promise<ActionResult<{ url: string }>> {
-  await requireAdminRole();
+  await requireAdminSession();
   const admin = createAdminClient();
   const { data, error } = await admin.storage
     .from("justificatifs")

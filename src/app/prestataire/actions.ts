@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { creerClientSession, creerClientAdmin } from "@/app/prestataire/_supabase";
 import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
-import type { LigneStatutType } from "@/lib/supabase/database.types";
 
 type Resultat = { success: true } | { success: false; error: string };
 
@@ -222,32 +221,7 @@ export async function enregistrerJustificatif(typeDocument: string, storagePath:
   return { success: true };
 }
 
-const STATUTS_LIGNE_BLOQUANTS: LigneStatutType[] = ["acceptee"];
-
-/** Suppression de compte prestataire — motif obligatoire, bloquée si une mission acceptée n'est pas encore terminée/annulée. */
-export async function demanderSuppressionComptePrestataire(motif: string): Promise<Resultat> {
-  const supabase = await creerClientSession();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { success: false, error: "Vous devez être connecté." };
-  if (!motif.trim()) return { success: false, error: "Un motif est requis." };
-  const profilId = await verifierProfil(user.id);
-  if (!profilId) return { success: false, error: "Profil introuvable." };
-
-  const { data: lignesAcceptees } = await supabase.from("mission_lignes").select("mission_id").eq("prestataire_id", profilId).in("statut_acceptation", STATUTS_LIGNE_BLOQUANTS);
-  const missionIds = (lignesAcceptees ?? []).map((l) => l.mission_id);
-  const { data: missionBloquante } =
-    missionIds.length > 0
-      ? await supabase.from("missions").select("id, lieu").in("id", missionIds).not("statut", "in", "(annulee,terminee)").limit(1).maybeSingle()
-      : { data: null };
-  if (missionBloquante) {
-    return { success: false, error: `Une mission en cours (${missionBloquante.lieu}) doit d'abord être terminée.` };
-  }
-
-  const { error } = await supabase.from("demandes_suppression_compte").insert({ user_id: user.id, motif, statut: "en_attente" });
-  if (error) return { success: false, error: "Impossible d'enregistrer votre demande pour le moment." };
-
-  revalidatePath("/prestataire/profil");
-  return { success: true };
-}
+// La suppression de compte (RGPD) est désormais centralisée dans
+// src/app/actions/suppression-compte.ts::demanderSuppressionCompte,
+// appelée directement par l'UI /client et /prestataire (audit prod —
+// déduplication des 3 implémentations).

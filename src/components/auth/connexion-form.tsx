@@ -12,6 +12,7 @@ import { GoogleButton } from "@/components/onboarding/recruteur/google-button";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { verifierLimiteConnexion } from "@/app/actions/auth";
+import { cheminInterneOuNull } from "@/lib/redirection";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Espace réel d'un utilisateur selon son rôle — /client et /prestataire sont deux espaces distincts (contrairement à l'ancien /tableau-de-bord unique, qui se répartissait lui-même en interne). */
@@ -30,12 +31,14 @@ export function ConnexionForm() {
   // fixée à l'avance : /client et /prestataire sont deux espaces
   // distincts, contrairement à l'ancien /tableau-de-bord unique qui
   // savait lui-même se répartir en interne.
-  const next = searchParams.get("next");
+  // Filtré (audit prod I2) : on n'accepte qu'un chemin interne absolu,
+  // jamais une URL externe ("//evil.com", "https://evil.com").
+  const next = cheminInterneOuNull(searchParams.get("next"));
   // Distinct de `next` ci-dessus : ne transmet vers l'inscription que si un
   // vrai "next" a été fourni — sinon chaque inscription ordinaire serait
   // redirigée vers l'espace au lieu de l'écran de bienvenue habituel
   // (RecruteurSuccessScreen).
-  const nextExplicite = searchParams.get("next");
+  const nextExplicite = next;
 
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");

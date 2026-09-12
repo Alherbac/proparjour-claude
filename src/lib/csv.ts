@@ -1,7 +1,22 @@
-/** Échappement CSV standard (RFC 4180) — guillemets si la valeur contient une virgule, un guillemet ou un retour à la ligne. */
+/**
+ * Échappement CSV.
+ *
+ * 1. RFC 4180 : guillemets si la valeur contient une virgule, un
+ *    guillemet ou un retour à la ligne.
+ * 2. Anti-injection de formule (audit prod I6) : un champ qui commence
+ *    par `= + - @`, une tabulation ou un retour chariot est interprété
+ *    comme une formule par Excel / Google Sheets / LibreOffice à
+ *    l'ouverture du fichier. On le neutralise en préfixant une
+ *    apostrophe — la cellule affiche alors le texte littéral.
+ */
 function echapperChampCsv(valeur: unknown): string {
-  const texte = valeur === null || valeur === undefined ? "" : String(valeur);
-  if (/[",\n]/.test(texte)) {
+  let texte = valeur === null || valeur === undefined ? "" : String(valeur);
+
+  if (texte !== "" && /^[=+\-@\t\r]/.test(texte)) {
+    texte = `'${texte}`;
+  }
+
+  if (/[",\n\r]/.test(texte)) {
     return `"${texte.replace(/"/g, '""')}"`;
   }
   return texte;

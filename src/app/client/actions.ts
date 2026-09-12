@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { creerClientSession, creerClientAdmin } from "@/app/client/_supabase";
 import { heuresEntre } from "@/app/client/_lib";
-import type { MissionStatutType } from "@/lib/supabase/database.types";
 
 type Resultat = { success: true; missionId?: string | null } | { success: false; error: string };
 
@@ -11,7 +10,7 @@ type Resultat = { success: true; missionId?: string | null } | { success: false;
  * "Retenir" une candidature — même effet réel que le parcours
  * existant (statut → "en_discussion", jamais "acceptee" directement :
  * seul un paiement de devis confirmé engage réellement, cf. le
- * commentaire de repondreCandidature dans actions/offres.ts, lu pour
+ * commentaire de retenirCandidature dans client/actions.ts, lu pour
  * comprendre le comportement attendu, jamais importé). Crée la
  * mission via la fonction Postgres `creer_mission_depuis_candidature`
  * (infrastructure de base de données, pas un fichier applicatif
@@ -194,31 +193,7 @@ export async function marquerProfilConsulte(candidatureId: string): Promise<void
   }
 }
 
-const STATUTS_MISSION_BLOQUANTS: MissionStatutType[] = ["en_attente", "confirmee", "en_cours"];
-
-/** Suppression de compte — motif obligatoire, bloquée si une mission n'est pas encore terminée (dossier design §4 "Paramètres"). */
-export async function demanderSuppressionCompte(motif: string): Promise<Resultat> {
-  const supabase = await creerClientSession();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { success: false, error: "Vous devez être connecté." };
-  if (!motif.trim()) return { success: false, error: "Un motif est requis." };
-
-  const { data: missionBloquante } = await supabase
-    .from("missions")
-    .select("id, lieu")
-    .eq("recruteur_id", user.id)
-    .in("statut", STATUTS_MISSION_BLOQUANTS)
-    .limit(1)
-    .maybeSingle();
-  if (missionBloquante) {
-    return { success: false, error: `Une mission en cours (${missionBloquante.lieu}) doit d'abord être terminée.` };
-  }
-
-  const { error } = await supabase.from("demandes_suppression_compte").insert({ user_id: user.id, motif, statut: "en_attente" });
-  if (error) return { success: false, error: "Impossible d'enregistrer votre demande pour le moment." };
-
-  revalidatePath("/client/parametres");
-  return { success: true };
-}
+// La suppression de compte (RGPD) est désormais centralisée dans
+// src/app/actions/suppression-compte.ts::demanderSuppressionCompte,
+// appelée directement par l'UI /client et /prestataire (audit prod —
+// déduplication des 3 implémentations).

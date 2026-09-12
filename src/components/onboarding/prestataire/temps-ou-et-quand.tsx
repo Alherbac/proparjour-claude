@@ -104,8 +104,7 @@ export function TempsOuEtQuand({
             conditions générales
           </a>{" "}
           et la{" "}
-          {/* Pas de page /confidentialite distincte dans le site aujourd'hui — les deux liens pointent vers /cgu, comme le faisait déjà l'ancien parcours. */}
-          <a href="/cgu" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#E21D1B] hover:text-[#B8130F]" onClick={(e) => e.stopPropagation()}>
+          <a href="/confidentialite" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#E21D1B] hover:text-[#B8130F]" onClick={(e) => e.stopPropagation()}>
             politique de confidentialité
           </a>{" "}
           de ProParJour.

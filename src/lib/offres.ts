@@ -16,7 +16,7 @@ export type CandidatureAvecPrestataire = CandidaturesRow & {
   specialites: string[];
   tarif_montant: number | null;
   tarif_type: string | null;
-  // Mission née de cette candidature (voir repondreCandidature →
+  // Mission née de cette candidature (voir retenirCandidature →
   // creer_mission_depuis_candidature) — null tant qu'elle n'a pas été
   // retenue. Permet à "en_discussion" de rouvrir la conversation
   // existante plutôt que d'en recréer une.

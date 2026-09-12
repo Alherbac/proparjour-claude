@@ -92,8 +92,14 @@ export type PrestatairesProfilsRow = {
   statut_verification: StatutVerificationType;
   motif_refus: string | null;
   visible: boolean;
+  /** Toujours null depuis 0053 : chiffré vers iban_chiffre par trigger. */
   iban: string | null;
+  /** Toujours null depuis 0053 : chiffré vers bic_chiffre par trigger. */
   bic: string | null;
+  /** IBAN chiffré au repos (0053) — lecture via la RPC reveler_rib. */
+  iban_chiffre: string | null;
+  /** BIC chiffré au repos (0053) — lecture via la RPC reveler_rib. */
+  bic_chiffre: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -437,6 +443,8 @@ export type Database = {
           | "competences"
           | "iban"
           | "bic"
+          | "iban_chiffre"
+          | "bic_chiffre"
         > &
           Partial<
             Pick<
@@ -750,6 +758,10 @@ export type Database = {
       has_role: {
         Args: { check_role: AdminRole };
         Returns: boolean;
+      };
+      reveler_rib: {
+        Args: { p_profil_id: string };
+        Returns: { iban: string | null; bic: string | null }[];
       };
       creer_mission_depuis_candidature: {
         Args: {

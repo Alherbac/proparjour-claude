@@ -4,12 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { creerNotification } from "@/lib/notifications";
-import { creerMessageSysteme } from "@/lib/messages";
-import { montantMission } from "@/lib/duree";
-import { getTauxCommission } from "@/lib/commission";
 import { METIERS } from "@/config/metiers";
 import type { MetierType } from "@/lib/supabase/database.types";
 import { traduireErreurDb } from "@/lib/erreurs-db";
+import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
 import { envoyerEmailNouvelleOffre } from "@/lib/email";
 import type { ContexteDetecte, ContrainteDetectee } from "@/lib/besoin";
 
@@ -264,11 +262,30 @@ export async function postulerOffre(offreId: string, message?: string): Promise<
 
   const { data: profil } = await supabase
     .from("prestataires_profils")
-    .select("id")
+    .select("id, statut_verification")
     .eq("user_id", user.id)
     .maybeSingle();
   if (!profil) {
     return { success: false, error: "Profil prestataire introuvable." };
+  }
+  // Seul un profil vérifié peut candidater (audit prod I4) — même règle
+  // que la visibilité en recherche (0032), revérifiée côté serveur et
+  // pas seulement masquée dans l'UI.
+  if (profil.statut_verification !== "valide") {
+    return { success: false, error: "Votre profil doit être vérifié avant de pouvoir candidater à une offre." };
+  }
+
+  // Anti-contournement (audit prod I4) : le message de candidature est
+  // un texte libre visible du recruteur, au même titre que les messages
+  // de mission ou les champs du devis — il passe donc le même filtre
+  // de coordonnées interdites (voir lib/coordonnees-interdites.ts,
+  // appliqué aussi dans actions/paiement-mission.ts et le profil).
+  const messageNettoye = message?.trim() || null;
+  if (messageNettoye) {
+    const coordonnees = detecterCoordonnees(messageNettoye);
+    if (coordonnees) {
+      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
+    }
   }
 
   const { data: offre } = await supabase
@@ -283,7 +300,7 @@ export async function postulerOffre(offreId: string, message?: string): Promise<
   const { error } = await supabase.from("candidatures").insert({
     offre_id: offreId,
     prestataire_id: profil.id,
-    message: message?.trim() || null,
+    message: messageNettoye,
   });
   if (error) {
     if (error.code === "23505") {
@@ -304,188 +321,13 @@ export async function postulerOffre(offreId: string, message?: string): Promise<
   return { success: true };
 }
 
-/**
- * Accepter une candidature crée immédiatement la mission (statut
- * `en_attente`, paiement `en_attente`) — c'est ce qui ouvre la
- * conversation (messages.mission_id est NOT NULL, voir 0010) et permet
- * d'y déposer tout de suite un devis pré-rempli. Le paiement se fait
- * ensuite dans cette même conversation (voir actions/paiement-mission.ts)
- * plutôt que via le panier localStorage comme pour le flux "booking
- * direct" existant (actions/commande.ts) — le prestataire a déjà
- * candidaté, son consentement est acquis, sa ligne est donc créée
- * `acceptee` d'emblée (voir creer_mission_depuis_candidature, 0031).
- */
-export async function repondreCandidature(
-  candidatureId: string,
-  reponse: "acceptee" | "refusee",
-): Promise<ActionResult<{ missionId: string | null }>> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: "Vous devez être connecté." };
-  }
-
-  const { data: candidature } = await supabase
-    .from("candidatures")
-    .select("id, offre_id, prestataire_id, statut")
-    .eq("id", candidatureId)
-    .maybeSingle();
-  if (!candidature) {
-    return { success: false, error: "Candidature introuvable." };
-  }
-  if (candidature.statut !== "en_attente") {
-    return { success: false, error: "Cette candidature a déjà reçu une réponse." };
-  }
-
-  // "Retenir" (reponse === "acceptee") n'est PAS une acceptation
-  // commerciale — ouvrir la conversation avec un candidat ne
-  // l'engage pas. La candidature passe à "en_discussion", jamais
-  // directement à "acceptee" : ce dernier statut n'est écrit qu'au
-  // paiement confirmé du devis (voir confirmerPaiementMissionAvecIntent,
-  // actions/paiement-mission.ts) — seule source de vérité de
-  // l'engagement réel, cf. "PROMPT MAJEUR" §1-2.
-  const statutEcrit = reponse === "acceptee" ? "en_discussion" : reponse;
-  const { error } = await supabase
-    .from("candidatures")
-    .update({ statut: statutEcrit })
-    .eq("id", candidatureId);
-  if (error) {
-    return { success: false, error: traduireErreurDb(error, "Impossible d'enregistrer votre réponse pour le moment.") };
-  }
-
-  // Client admin pour le profil : un candidat dont le dossier KYC
-  // n'est pas encore "valide" est invisible du client session (RLS,
-  // voir 0001_init.sql), ce qui faisait échouer silencieusement la
-  // notification d'acceptation/refus pour ces candidats.
-  const admin = createAdminClient();
-  const [{ data: offre }, { data: profil }] = await Promise.all([
-    supabase
-      .from("offres")
-      .select("titre, description, metier, ville, date_mission, heure_debut, heure_fin, tarif_horaire")
-      .eq("id", candidature.offre_id)
-      .maybeSingle(),
-    admin.from("prestataires_profils").select("id, user_id").eq("id", candidature.prestataire_id).maybeSingle(),
-  ]);
-
-  if (reponse === "refusee") {
-    if (profil) {
-      await creerNotification({
-        userId: profil.user_id,
-        type: "candidature_refusee",
-        titre: "Candidature déclinée",
-        contenu: offre?.titre ?? undefined,
-        lien: "/prestataire/opportunites",
-      });
-    }
-    revalidatePath("/client/candidatures");
-    return { success: true, data: { missionId: null } };
-  }
-
-  await supabase.from("offres").update({ statut: "pourvue" }).eq("id", candidature.offre_id);
-
-  let missionId: string | null = null;
-  if (offre && profil) {
-    const montantTotal = montantMission(offre.heure_debut, offre.heure_fin, offre.tarif_horaire);
-    const tauxCommission = await getTauxCommission();
-    const montantCommission = Math.round(montantTotal * (tauxCommission / 100) * 100) / 100;
-
-    const { data: missionIdCreee, error: missionError } = await admin.rpc("creer_mission_depuis_candidature", {
-      p_recruteur_id: user.id,
-      p_offre_id: candidature.offre_id,
-      p_candidature_id: candidature.id,
-      p_prestataire_id: profil.id,
-      p_metier: offre.metier,
-      p_lieu: offre.ville,
-      p_date_mission: offre.date_mission,
-      p_heure_debut: offre.heure_debut,
-      p_heure_fin: offre.heure_fin,
-      p_tarif_applique: montantTotal,
-      p_montant_total: montantTotal,
-      p_taux_commission: tauxCommission,
-      p_montant_commission: montantCommission,
-      p_description: offre.description || null,
-    });
-
-    if (missionError || !missionIdCreee) {
-      return { success: false, error: missionError ? traduireErreurDb(missionError, "Échec de la création de la mission.") : "Échec de la création de la mission." };
-    }
-    missionId = missionIdCreee;
-
-    // Retenir une candidature ouvre la conversation — ce n'est PAS
-    // une acceptation commerciale : aucun devis n'est envoyé
-    // automatiquement. C'est au prestataire de proposer le sien (voir
-    // envoyerDevis, actions/missions.ts), après discussion. Correction
-    // UX critique du parcours candidature : avant ce chantier, un
-    // devis payable était généré ici, au nom du CLIENT, dès ce clic —
-    // ce qui court-circuitait entièrement l'échange et le consentement
-    // du professionnel sur les termes exacts.
-    await creerMessageSysteme({
-      missionId,
-      expediteurId: user.id,
-      destinataireId: profil.user_id,
-      contenu: "✅ Votre candidature a été retenue — vous pouvez échanger, puis envoyer votre devis.",
-    });
-
-    await creerNotification({
-      userId: profil.user_id,
-      type: "candidature_acceptee",
-      titre: "Candidature retenue",
-      contenu: `${offre.titre} — échangez avec le client puis envoyez votre devis.`,
-      lien: `/missions/${missionId}`,
-      missionId,
-    });
-  }
-
-  revalidatePath("/client/candidatures");
-  return { success: true, data: { missionId } };
-}
-
-/**
- * "Réintégrer" une candidature écartée — dossier design, "Candidatures
- * reçues" (état "Écartée"). Ramène simplement le statut à "en_attente"
- * pour que le client puisse reconsidérer ; ne fait rien de plus (pas
- * de notification, l'écart initial n'en avait pas fait naître non
- * plus dans l'autre sens).
- */
-export async function reintegrerCandidature(candidatureId: string): Promise<ActionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: "Vous devez être connecté." };
-  }
-
-  const { data: candidature } = await supabase
-    .from("candidatures")
-    .select("id, offre_id, statut")
-    .eq("id", candidatureId)
-    .maybeSingle();
-  if (!candidature) {
-    return { success: false, error: "Candidature introuvable." };
-  }
-  if (candidature.statut !== "refusee") {
-    return { success: false, error: "Seule une candidature écartée peut être réintégrée." };
-  }
-
-  const { data: offre } = await supabase.from("offres").select("recruteur_id, statut").eq("id", candidature.offre_id).maybeSingle();
-  if (!offre || offre.recruteur_id !== user.id) {
-    return { success: false, error: "Offre introuvable." };
-  }
-  if (offre.statut !== "publiee") {
-    return { success: false, error: "Cette offre n'accepte plus de candidatures." };
-  }
-
-  const { error } = await supabase.from("candidatures").update({ statut: "en_attente" }).eq("id", candidatureId);
-  if (error) {
-    return { success: false, error: traduireErreurDb(error, "Impossible de réintégrer cette candidature pour le moment.") };
-  }
-
-  revalidatePath("/client/candidatures");
-  return { success: true };
-}
+// Le workflow "candidatures reçues" (retenir / écarter / réintégrer)
+// vit entièrement dans src/app/client/actions.ts (retenirCandidature,
+// refuserCandidature, reintegrerCandidature), seul appelé par
+// src/app/client/candidatures/ecran.tsx. Les anciennes implémentations
+// `repondreCandidature` et `reintegrerCandidature` de ce fichier
+// n'avaient plus aucun appelant — supprimées (audit prod, nettoyage
+// code mort).
 
 export type ModifierOffreInput = {
   titre: string;

@@ -19,7 +19,7 @@ type ActionResult<T = undefined> =
  * initiale, potentiellement plus large qu'au parcours candidature :
  * voir "proparjour 6-7" §8, panier → "Proposer la mission", où
  * plusieurs professionnels peuvent être proposés sans avoir encore
- * tous répondu). Pour une mission née de repondreCandidature (une
+ * tous répondu). Pour une mission née de retenirCandidature (une
  * seule ligne, déjà 'acceptee' à la création), retombe exactement sur
  * le montant déjà stocké — aucune régression sur ce chemin existant.
  */
@@ -36,7 +36,7 @@ export async function montantAPayer(admin: ReturnType<typeof createAdminClient>,
 /**
  * Paiement inline dans la conversation (Bloc 9) — contrepartie de
  * creerIntentionPaiement (actions/commande.ts) mais pour une mission
- * déjà créée (par repondreCandidature ou, depuis "proparjour 6-7",
+ * déjà créée (par retenirCandidature ou, depuis "proparjour 6-7",
  * par proposerMission), avec son paiement `en_attente` déjà en base.
  * Le montant est recalculé à chaque appel depuis les lignes
  * réellement acceptées (voir montantAPayer) plutôt que lu tel quel
@@ -244,7 +244,7 @@ export async function confirmerPaiementMissionAvecIntent(
   }
 
   // Seule étape qui fait réellement passer une candidature à
-  // "acceptee" — jamais "Retenir" (voir repondreCandidature,
+  // "acceptee" — jamais "Retenir" (voir retenirCandidature,
   // actions/offres.ts, qui écrit "en_discussion"). Garde explicite sur
   // "en_discussion" : idempotent (un second appel, webhook + retour
   // navigateur, ne fait rien de plus), et ne touche jamais une

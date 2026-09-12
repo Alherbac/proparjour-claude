@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Badge } from "@/app/client/_components/badge";
-import { demanderSuppressionCompte } from "@/app/client/actions";
+import { demanderSuppressionCompte } from "@/app/actions/suppression-compte";
 
 const MOTIFS = [
   "Je n'utilise plus le service",

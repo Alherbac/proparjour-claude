@@ -1,9 +1,12 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { escapeHtml } from "@/lib/html";
+import { BASE_URL } from "@/lib/base-url";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
-const EXPEDITEUR = "ProParJour <notifications@proparjour.fr>";
-const BASE_URL = "https://proparjour.fr";
+// Expéditeur configurable par environnement (audit prod A7) — repli sur
+// la valeur de production si la variable est absente.
+const EXPEDITEUR = process.env.EMAIL_EXPEDITEUR ?? "ProParJour <notifications@proparjour.fr>";
 
 /**
  * Catégorie B, point 13 — notifications email a minima. Best-effort,
@@ -17,24 +20,35 @@ async function envoyerEmail(params: { to: string; subject: string; html: string 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return;
   try {
+    // Le sujet peut contenir une donnée utilisateur (titre d'offre) —
+    // on neutralise les sauts de ligne (anti-injection d'en-tête) même
+    // si Resend construit l'en-tête à partir du JSON (audit prod I5).
+    const subject = params.subject.replace(/[\r\n]+/g, " ").trim();
     await fetch(RESEND_API_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: EXPEDITEUR, to: [params.to], subject: params.subject, html: params.html }),
+      body: JSON.stringify({ from: EXPEDITEUR, to: [params.to], subject, html: params.html }),
     });
   } catch {
     // Volontairement ignoré — voir commentaire ci-dessus.
   }
 }
 
+/**
+ * Toutes les valeurs dynamiques sont échappées (audit prod I5) : titre,
+ * corps et libellé de lien peuvent contenir des données saisies par un
+ * utilisateur (titre d'offre, lieu…). `lien.href` est toujours un
+ * chemin interne construit par l'application, échappé également par
+ * principe (valeur d'attribut).
+ */
 function gabaritEmail(titre: string, corps: string, lien?: { href: string; label: string }): string {
   return `<div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
     <p style="font-weight: 700; font-size: 18px; color: #C0392B; margin: 0 0 24px;">ProParJour</p>
-    <h1 style="font-size: 20px; margin: 0 0 12px;">${titre}</h1>
-    <p style="font-size: 15px; line-height: 1.6; color: #444;">${corps}</p>
+    <h1 style="font-size: 20px; margin: 0 0 12px;">${escapeHtml(titre)}</h1>
+    <p style="font-size: 15px; line-height: 1.6; color: #444;">${escapeHtml(corps)}</p>
     ${
       lien
-        ? `<p style="margin-top: 20px;"><a href="${BASE_URL}${lien.href}" style="background: #C0392B; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">${lien.label}</a></p>`
+        ? `<p style="margin-top: 20px;"><a href="${escapeHtml(BASE_URL + lien.href)}" style="background: #C0392B; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">${escapeHtml(lien.label)}</a></p>`
         : ""
     }
   </div>`;

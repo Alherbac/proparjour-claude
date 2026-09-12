@@ -26,7 +26,11 @@ export default async function DetailOffrePage({ params }: { params: Promise<{ id
   } = await supabase.auth.getUser();
   if (!user) redirect(`/connexion?next=/prestataire/opportunites/${id}`);
 
-  const { data: profil } = await supabase.from("prestataires_profils").select("id").eq("user_id", user.id).maybeSingle();
+  const { data: profil } = await supabase
+    .from("prestataires_profils")
+    .select("id, statut_verification")
+    .eq("user_id", user.id)
+    .maybeSingle();
   if (!profil) redirect("/prestataire");
 
   const { data: offre } = await supabase.from("offres").select("*").eq("id", id).maybeSingle();
@@ -80,7 +84,16 @@ export default async function DetailOffrePage({ params }: { params: Promise<{ id
         {offre.description && <p className="mt-4 leading-relaxed text-[13.5px] text-[#6B6660]">{offre.description}</p>}
       </div>
 
-      <CandidaterButton offreId={offre.id} statutInitial={statutCandidature} postulable={offre.statut === "publiee"} />
+      <CandidaterButton
+        offreId={offre.id}
+        statutInitial={statutCandidature}
+        postulable={offre.statut === "publiee"}
+        raisonBlocage={
+          profil.statut_verification !== "valide"
+            ? "Votre profil doit être vérifié par l'équipe ProParJour avant de pouvoir candidater."
+            : undefined
+        }
+      />
     </div>
   );
 }

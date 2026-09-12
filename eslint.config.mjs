@@ -12,6 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Non applicatif : copie de sauvegarde et exports d'outils de
+    // design déposés à la racine (déjà exclus de git et de tsconfig).
+    "_archive/**",
+    "3 Istanbul design 2/**",
+    "Asia design proparjour/**",
+    "Claude Istanbul 1/**",
+    "110790prodesign/**",
+    "migration-data/**",
   ]),
 ]);
 
