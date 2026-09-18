@@ -85,8 +85,8 @@ export function EcranOpportunites({
                     {remuneration} €
                   </span>
                   <Link href={`/prestataire/opportunites/${offre.id}`}>
-                    <DashButton variant={dejaCandidate ? "secondaire" : "plein"} disabled={dejaCandidate}>
-                      {dejaCandidate ? "Déjà candidaté" : "Candidater"}
+                    <DashButton variant="secondaire" disabled={dejaCandidate}>
+                      {dejaCandidate ? "Déjà candidaté" : "Voir l'offre"}
                     </DashButton>
                   </Link>
                 </div>

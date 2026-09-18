@@ -8,7 +8,8 @@ import { Badge } from "@/app/client/_components/badge";
 import { DashButton } from "@/app/client/_components/button";
 import { AvatarPill } from "@/app/client/_components/avatar-pill";
 import { dateCourteFr, BADGE_STATUT_MISSION } from "@/app/client/_lib";
-import { classerMission, type MissionAvecEquipe } from "@/app/client/_types";
+import { classerMission, type MissionAvecEquipe, type OffreAvecCandidatures } from "@/app/client/_types";
+import { CarteOffre } from "@/app/client/missions/carte-offre";
 
 type Filtre = "toutes" | "en_cours" | "a_venir" | "terminees";
 
@@ -32,7 +33,13 @@ function actionsPourMission(m: MissionAvecEquipe) {
   return [{ label: "Détail", href: `/missions/${m.id}`, variant: "secondaire" as const }];
 }
 
-export function EcranMissions({ missions }: { missions: MissionAvecEquipe[] }) {
+export function EcranMissions({
+  missions,
+  offresEnRecherche,
+}: {
+  missions: MissionAvecEquipe[];
+  offresEnRecherche: OffreAvecCandidatures[];
+}) {
   const [filtre, setFiltre] = useState<Filtre>("toutes");
 
   const compteurs = useMemo(
@@ -71,10 +78,11 @@ export function EcranMissions({ missions }: { missions: MissionAvecEquipe[] }) {
         <FilterPill actif={filtre === "terminees"} onClick={() => setFiltre("terminees")}>Terminées</FilterPill>
       </div>
 
-      {filtrees.length === 0 ? (
+      {filtrees.length === 0 && (filtre !== "toutes" || offresEnRecherche.length === 0) ? (
         <p className="py-10 text-center text-[13.5px] text-[#6B6660]">Aucune mission dans ce filtre.</p>
       ) : (
         <div className="space-y-2.5">
+          {filtre === "toutes" && offresEnRecherche.map((o) => <CarteOffre key={o.id} offre={o} />)}
           {filtrees.map((m) => (
             <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#EAE6E0] bg-white p-4">
               <div className="min-w-0 flex-1">

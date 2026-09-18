@@ -56,6 +56,21 @@ export const BADGE_STATUT_CANDIDATURE: Record<CandidatureStatutType, { label: st
   refusee: { label: "Écartée", tone: "gris" },
 };
 
+import type { OffreStatutType } from "@/lib/supabase/database.types";
+
+/**
+ * Statut d'une OFFRE publiée (recherche de candidat), distinct du
+ * statut d'une MISSION confirmée (BADGE_STATUT_MISSION ci-dessus) —
+ * tant qu'une offre est "publiee", aucune mission ne lui correspond
+ * encore (voir /client/missions/ecran.tsx).
+ */
+export const BADGE_STATUT_OFFRE: Record<OffreStatutType, { label: string; tone: BadgeTone }> = {
+  publiee: { label: "Recherche", tone: "orange" },
+  pourvue: { label: "Pourvue", tone: "vert" },
+  annulee: { label: "Retirée", tone: "gris" },
+  expiree: { label: "Expirée", tone: "gris" },
+};
+
 import type { PaiementStatutType } from "@/lib/supabase/database.types";
 
 export const BADGE_STATUT_FACTURE: Record<"a_emettre" | PaiementStatutType, { label: string; tone: BadgeTone }> = {

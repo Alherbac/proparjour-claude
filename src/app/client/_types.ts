@@ -76,6 +76,18 @@ export function postesAPourvoir(offres: OffreAvecCandidatures[]): number {
   return offres.filter((o) => o.statut === "publiee").length;
 }
 
+/**
+ * Offres encore en recherche de candidat — aucune n'est devenue une
+ * mission (retenirCandidature bascule l'offre en "pourvue" dès qu'un
+ * candidat est retenu, voir client/actions.ts). Distinct des missions
+ * réelles : affiché dans /client/missions ("Toutes") sans jamais
+ * rejoindre les statuts En cours / À venir / Terminées, propres au
+ * cycle de vie d'une mission confirmée.
+ */
+export function offresEnRecherche(offres: OffreAvecCandidatures[]): OffreAvecCandidatures[] {
+  return offres.filter((o) => o.statut === "publiee");
+}
+
 /** Professionnels déjà retenus par ce recruteur — prestataires distincts avec au moins une ligne de mission acceptée, toutes missions confondues. */
 export function getProfessionnelsRetenus(missions: MissionAvecEquipe[]): number {
   const idsPrestataires = new Set<string>();
