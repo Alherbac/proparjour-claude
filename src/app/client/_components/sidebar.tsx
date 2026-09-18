@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
+import { signOutAction } from "@/app/actions/auth";
 
 export type LienNav = { href: string; label: string; compteur?: number };
 
@@ -74,7 +76,7 @@ export function Sidebar({
   return (
     <aside className="flex w-[244px] shrink-0 flex-col bg-[#1A1917]">
       <div className="px-5 pb-5 pt-6">
-        <Link href="/client" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-[7px] bg-[#E21D1B] text-[13px] font-bold text-white">P</span>
           <span className="text-[15px] font-bold text-white">ProParJour</span>
         </Link>
@@ -95,10 +97,20 @@ export function Sidebar({
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#E21D1B] text-[12px] font-bold text-white">
           {initiales}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[12.5px] font-semibold text-white">{nom}</p>
           <p className="truncate text-[11px] text-[#B8B2AA]">{sousTitre}</p>
         </div>
+        <form action={signOutAction}>
+          <button
+            type="submit"
+            aria-label="Se déconnecter"
+            title="Se déconnecter"
+            className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[#B8B2AA] transition-colors hover:bg-[#2E2A26] hover:text-white"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </form>
       </div>
     </aside>
   );

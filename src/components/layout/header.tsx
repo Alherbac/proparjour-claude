@@ -61,7 +61,7 @@ export async function Header() {
             <>
               <NotificationBell userId={user.id} notificationsInitiales={notifications} voirToutHref={`${espaceHref}/notifications`} />
               <Link
-                href={espaceHref}
+                href={`${espaceHref}/missions`}
                 className="hidden text-[14.5px] font-medium text-ppj-text-2 transition-colors hover:text-ppj-ink max-[900px]:hidden sm:block"
               >
                 Vos missions
