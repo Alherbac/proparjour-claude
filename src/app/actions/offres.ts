@@ -268,12 +268,19 @@ export async function postulerOffre(offreId: string, message?: string): Promise<
   if (!profil) {
     return { success: false, error: "Profil prestataire introuvable." };
   }
-  // Seul un profil vérifié peut candidater (audit prod I4) — même règle
-  // que la visibilité en recherche (0032), revérifiée côté serveur et
-  // pas seulement masquée dans l'UI.
-  if (profil.statut_verification !== "valide") {
-    return { success: false, error: "Votre profil doit être vérifié avant de pouvoir candidater à une offre." };
-  }
+  // Seul un profil vérifié devrait pouvoir candidater (audit prod I4) —
+  // même règle que la visibilité en recherche (0032), revérifiée côté
+  // serveur et pas seulement masquée dans l'UI.
+  //
+  // Désactivé temporairement (demande produit, période de préparation
+  // avant lancement) : la vérification manuelle des profils par
+  // l'équipe ProParJour n'est pas encore opérationnelle, donc exiger
+  // "valide" bloquerait toute candidature. Reviens à `if
+  // (profil.statut_verification !== "valide") { ... }` dès que la
+  // vérification tourne réellement.
+  // if (profil.statut_verification !== "valide") {
+  //   return { success: false, error: "Votre profil doit être vérifié avant de pouvoir candidater à une offre." };
+  // }
 
   // Anti-contournement (audit prod I4) : le message de candidature est
   // un texte libre visible du recruteur, au même titre que les messages
@@ -410,6 +417,7 @@ export async function modifierOffre(offreId: string, input: ModifierOffreInput):
   }
 
   revalidatePath("/client/candidatures");
+  revalidatePath("/client/missions");
   return { success: true };
 }
 
@@ -471,6 +479,7 @@ export async function cloturerOffre(offreId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/client/candidatures");
+  revalidatePath("/client/missions");
   return { success: true };
 }
 

@@ -8,6 +8,7 @@ import { creerNotification } from "@/lib/notifications";
 import { creerMessageSysteme } from "@/lib/messages";
 import { verifierLimiteDebit } from "@/lib/rate-limit";
 import { traduireErreurDb } from "@/lib/erreurs-db";
+import { repartitionLigne, type RepartitionLigne } from "@/lib/facturation";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -130,22 +131,20 @@ export async function creerIntentionPaiementMission(
   return { success: true, data: { clientSecret: intent.client_secret, montant } };
 }
 
-export type RepartitionPaiement = {
-  total: number;
-  netPrestataire: number;
-  commission: number;
-  tauxCommission: number;
-};
+export type RepartitionPaiement = RepartitionLigne;
 
 /**
- * Répartition prestataire / commission d'une mission, pour l'afficher
- * au client avant paiement (carte devis) — jamais une fonctionnalité
- * de tarification, seulement de la transparence sur un montant déjà
- * dû aujourd'hui : le total affiché est calculé exactement comme
+ * Répartition prestation / commission / total / net d'une mission,
+ * pour l'afficher au client avant paiement (carte devis) — jamais une
+ * fonctionnalité de tarification, seulement de la transparence sur un
+ * montant déjà dû aujourd'hui. Le total est calculé exactement comme
  * `creerIntentionPaiementMission` (montantAPayer, lignes réellement
  * acceptées), pour ne jamais désynchroniser l'affichage du montant
- * réellement facturé. Le taux vient de `paiements.taux_commission`,
- * figé à la création de la mission (jamais recalculé après coup).
+ * réellement facturé ; la répartition elle-même vient de
+ * repartitionLigne (lib/facturation.ts), SEULE source de calcul —
+ * jamais un second moteur financier ici. Le taux vient de
+ * `paiements.taux_commission`, figé à la création de la mission
+ * (jamais recalculé après coup).
  */
 export async function obtenirRepartitionPaiement(missionId: string): Promise<ActionResult<RepartitionPaiement>> {
   const supabaseServer = await createClient();
@@ -174,10 +173,9 @@ export async function obtenirRepartitionPaiement(missionId: string): Promise<Act
     return { success: false, error: "Aucun paiement associé à cette mission." };
   }
 
-  const commission = Math.round(total * (paiement.taux_commission / 100) * 100) / 100;
-  const netPrestataire = Math.round((total - commission) * 100) / 100;
+  const repartition = repartitionLigne({ tarif_applique: total, tarif_final: null }, paiement.taux_commission);
 
-  return { success: true, data: { total, netPrestataire, commission, tauxCommission: paiement.taux_commission } };
+  return { success: true, data: repartition };
 }
 
 /**

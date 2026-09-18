@@ -445,6 +445,17 @@ export async function demanderAjustementDevis(messageId: string, note: string): 
   const { message } = resultat;
   const noteTrimmed = note.trim().slice(0, 500);
 
+  // Même contrôle serveur que pour un message libre ou un devis (voir
+  // envoyerMessage, actions/messages.ts, et envoyerDevis ci-dessus) :
+  // cette note est un texte libre visible du prestataire, au même
+  // titre qu'un message de conversation.
+  if (noteTrimmed) {
+    const coordonnees = detecterCoordonnees(noteTrimmed);
+    if (coordonnees) {
+      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
+    }
+  }
+
   const { error } = await admin
     .from("messages")
     .update({
@@ -787,6 +798,33 @@ export async function confirmerServiceFait(missionId: string): Promise<ActionRes
   }
   if (mission.statut !== "confirmee" && mission.statut !== "en_cours") {
     return { success: false, error: "Cette mission n'est pas dans un état permettant cette confirmation." };
+  }
+
+  // Suivi d'exécution (migration 0059) : une ligne dont la fin a été
+  // déclarée doit avoir ses horaires CONFIRMÉS par le client avant de
+  // pouvoir libérer les fonds — une déclaration encore en attente
+  // ("declaree") ou contestée ("contestee") bloque, une ligne qui n'a
+  // jamais utilisé ce suivi (statut null) n'est pas concernée, pour ne
+  // rien changer au comportement des missions déjà en production.
+  const { data: lignesActives } = await admin
+    .from("mission_lignes")
+    .select("heure_fin_statut")
+    .eq("mission_id", missionId)
+    .eq("statut_acceptation", "acceptee");
+  if ((lignesActives ?? []).some((l) => l.heure_fin_statut === "contestee")) {
+    return { success: false, error: "Un désaccord sur les horaires est en attente de résolution. Le paiement reste bloqué." };
+  }
+  if ((lignesActives ?? []).some((l) => l.heure_fin_statut === "declaree")) {
+    return { success: false, error: "Les horaires de fin doivent d'abord être confirmés avant de valider le service fait." };
+  }
+
+  // Complément pour heures supplémentaires (migration 0060) : ne
+  // libère jamais un montant inférieur à ce qui est réellement dû —
+  // si un complément est calculé et pas encore réglé, la libération
+  // reste bloquée jusqu'à son paiement (voir actions/paiement-complement.ts).
+  const { data: paiementComplement } = await admin.from("paiements").select("complement_paye").eq("mission_id", missionId).maybeSingle();
+  if (paiementComplement && !paiementComplement.complement_paye) {
+    return { success: false, error: "Un complément de paiement pour heures supplémentaires reste à régler avant la libération." };
   }
 
   await admin.from("mission_lignes").update({ service_fait: true }).eq("mission_id", missionId);

@@ -96,6 +96,63 @@ export async function creerMessageDevis(params: {
   }
 }
 
+/**
+ * Événements du suivi d'exécution (validation produit 2026-09-17) —
+ * chaque carte "Mission commencée" / "Fin de la mission" / "Horaires
+ * confirmés/contestés" dans la messagerie est un message structuré de
+ * ce type, jamais un élément purement visuel : les valeurs de
+ * `metadata` sont exactement celles écrites en base par l'action
+ * serveur correspondante (actions/execution-mission.ts).
+ */
+export type ExecutionEvenement =
+  | "debut_declare"
+  | "debut_confirme"
+  | "debut_conteste"
+  | "fin_declaree"
+  | "fin_confirmee"
+  | "fin_contestee";
+
+export type ExecutionPayload = {
+  evenement: ExecutionEvenement;
+  ligneId: string;
+  heureDebutPrevue: string;
+  heureFinPrevue: string;
+  heureDebutReelle?: string | null;
+  heureFinReelle?: string | null;
+  dureeHeures?: number;
+  tarifHoraire?: number;
+  /** Total payé par le client, commission comprise (jamais un montant "avant commission" — voir lib/facturation.ts). */
+  totalClient?: number;
+  commission?: number;
+  netPrestataire?: number;
+  tauxCommission?: number;
+  montantInitialDevis?: number;
+  motif?: string;
+};
+
+/** Même mécanisme best-effort que creerMessageDevis, pour le suivi d'exécution. */
+export async function creerMessageExecution(params: {
+  missionId: string;
+  expediteurId: string;
+  destinataireId: string;
+  contenu: string;
+  execution: ExecutionPayload;
+}) {
+  try {
+    const admin = createAdminClient();
+    await admin.from("messages").insert({
+      mission_id: params.missionId,
+      expediteur_id: params.expediteurId,
+      destinataire_id: params.destinataireId,
+      contenu: params.contenu,
+      type: "execution",
+      metadata: params.execution,
+    });
+  } catch {
+    // Volontairement ignoré — voir commentaire de creerMessageSysteme.
+  }
+}
+
 export type Participant = { userId: string; prenom: string | null; nom: string | null };
 
 export type ParticipantsMission = {

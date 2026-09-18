@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
@@ -8,19 +9,17 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  creerIntentionPaiementMission,
-  confirmerPaiementMission,
-  obtenirRepartitionPaiement,
-  type RepartitionPaiement,
-} from "@/app/actions/paiement-mission";
+import { creerIntentionPaiementMission, confirmerPaiementMission } from "@/app/actions/paiement-mission";
 import { accepterDevis, demanderAjustementDevis, declinerDevis } from "@/app/actions/missions";
 import { heuresEntre } from "@/lib/duree";
+import { repartitionLigne } from "@/lib/facturation";
+import { cn } from "@/lib/utils";
 import type { DevisPayload } from "@/lib/messages";
 import type { PaiementStatutType } from "@/lib/supabase/database.types";
 
 let stripePromise: Promise<Stripe | null> | null = null;
-function getStripePromise() {
+/** Partagée avec la carte de complément (message-thread.tsx, PayerComplementCard) — même clé publique, un seul singleton Stripe.js pour toute la messagerie. */
+export function getStripePromise() {
   const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   if (!key) return null;
   stripePromise ??= loadStripe(key);
@@ -220,6 +219,9 @@ function DeclinerAjustementButton({ messageId }: { messageId: string }) {
  * possible : pas de redirection vers /panier, le montant est déjà
  * fixé par le devis.
  */
+/** Une version antérieure de devis, compactée dans "Voir l'historique des versions" (dossier design §6) plutôt qu'affichée comme carte pleine. */
+export type HistoriqueDevis = { version: number; detail: string; montant: string };
+
 export function DevisCard({
   missionId,
   messageId,
@@ -227,6 +229,8 @@ export function DevisCard({
   estRecruteur,
   paiementStatut,
   estLeDernier,
+  historique = [],
+  tauxCommission,
 }: {
   missionId: string;
   messageId: string;
@@ -235,25 +239,22 @@ export function DevisCard({
   paiementStatut: PaiementStatutType | null;
   /** Seul le devis le plus récent du fil est actionnable (accepter / ajuster / décliner / payer) — une version remplacée reste visible mais purement informative, jamais qu'un bouton caché : le serveur revérifie de toute façon (voir estDevisActif, actions/missions.ts). */
   estLeDernier: boolean;
+  /** Versions antérieures de ce devis, les plus anciennes en premier — voir HistoriqueDevis. */
+  historique?: HistoriqueDevis[];
+  /** Taux de commission de la mission (mission_lignes/ligne du contact) — permet d'afficher la répartition (§4/§6) dès l'envoi du devis, sans aller-retour serveur : c'est un pourcentage, jamais confidentiel (déjà visible du prestataire ailleurs, ex. EditerFactureForm). */
+  tauxCommission: number | null;
 }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [chargement, setChargement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [repartition, setRepartition] = useState<RepartitionPaiement | null>(null);
+  const [historiqueOuvert, setHistoriqueOuvert] = useState(false);
   const stripePromise = getStripePromise();
 
-  const statutPourEffet = devis.statut ?? "acceptee";
-  const paiementConfirmePourEffet = paiementStatut !== null && paiementStatut !== "en_attente";
-  useEffect(() => {
-    if (!estRecruteur || statutPourEffet !== "acceptee" || paiementConfirmePourEffet) return;
-    let annule = false;
-    obtenirRepartitionPaiement(missionId).then((result) => {
-      if (!annule && result.success) setRepartition(result.data);
-    });
-    return () => {
-      annule = true;
-    };
-  }, [estRecruteur, statutPourEffet, paiementConfirmePourEffet, missionId]);
+  // Même fonction que partout ailleurs (lib/facturation.ts) — jamais
+  // un second calcul : la répartition est dérivée du montant du devis
+  // et du taux de commission, disponibles dès l'envoi, quel que soit
+  // le statut (dossier design §4 : "mêmes chiffres pour les deux rôles").
+  const repartition = tauxCommission !== null ? repartitionLigne({ tarif_applique: devis.montantTotal, tarif_final: null }, tauxCommission) : null;
 
   async function handlePayer() {
     setChargement(true);
@@ -271,15 +272,18 @@ export function DevisCard({
   // Absent = devis créé avant ce chantier (parcours candidature
   // historique, parcours panier) : voir le commentaire sur DevisPayload.
   const statut = devis.statut ?? "acceptee";
+  // Bordure forte (carte d'action, dossier design §2C) uniquement chez
+  // le rôle qui doit réellement agir maintenant — l'autre voit la même
+  // carte avec une bordure neutre, jamais les deux en même temps.
+  const doitAgir = estLeDernier && ((statut === "en_attente" && estRecruteur) || (statut === "ajustement_demande" && !estRecruteur));
 
   return (
-    <div
-      className={`w-full max-w-[420px] rounded-2xl border bg-background p-4 shadow-sm ${
-        statut === "en_attente" ? "border-primary/30" : "border-border"
-      }`}
-    >
+    <div className={cn("w-full max-w-[460px] rounded-2xl border bg-background p-4 shadow-sm", doitAgir ? "border-[1.5px] border-primary" : "border-border")}>
       <div className="flex flex-wrap items-center gap-2.5">
-        <p className="font-mono text-xs font-semibold uppercase tracking-wide text-primary">Devis</p>
+        <p className="flex items-center gap-2 font-mono text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {doitAgir && <span className="size-[7px] shrink-0 rounded-full bg-primary" />}
+          Devis V{historique.length + 1} · actif
+        </p>
         {statut === "en_attente" && (
           <Pastille className="border-primary/25 bg-primary/10 text-primary">
             {estRecruteur ? "En attente de votre réponse" : "En attente de réponse du client"}
@@ -316,17 +320,30 @@ export function DevisCard({
         {repartition ? (
           <>
             <span className="flex items-baseline justify-between gap-3 text-muted-foreground">
-              <span>Part du professionnel</span>
-              <span className="shrink-0">{repartition.netPrestataire} €</span>
+              <span>Prestation</span>
+              <span className="shrink-0">{repartition.prestation} €</span>
             </span>
             <span className="flex items-baseline justify-between gap-3 text-muted-foreground">
-              <span>Frais de service ProParJour ({repartition.tauxCommission} %)</span>
+              <span>Commission ProParJour ({repartition.tauxCommission} %)</span>
               <span className="shrink-0">{repartition.commission} €</span>
             </span>
-            <span className="flex items-baseline justify-between gap-3 font-semibold text-foreground">
-              <span>Total à payer</span>
-              <span className="shrink-0">{repartition.total} €</span>
-            </span>
+            {estRecruteur ? (
+              <span className="flex items-baseline justify-between gap-3 font-semibold text-foreground">
+                <span>Total à votre charge</span>
+                <span className="shrink-0">{repartition.totalClient} €</span>
+              </span>
+            ) : (
+              <>
+                <span className="flex items-baseline justify-between gap-3 text-muted-foreground">
+                  <span>Total client</span>
+                  <span className="shrink-0">{repartition.totalClient} €</span>
+                </span>
+                <span className="flex items-baseline justify-between gap-3 font-semibold text-foreground">
+                  <span>Votre net</span>
+                  <span className="shrink-0">{repartition.netPrestataire} €</span>
+                </span>
+              </>
+            )}
           </>
         ) : (
           <span className="flex items-baseline justify-between gap-3 font-semibold text-foreground">
@@ -335,6 +352,33 @@ export function DevisCard({
           </span>
         )}
       </div>
+
+      {historique.length > 0 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setHistoriqueOuvert((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground underline underline-offset-3 hover:text-foreground"
+          >
+            <ChevronDown className={`size-3.5 transition-transform ${historiqueOuvert ? "rotate-180" : ""}`} />
+            {historiqueOuvert ? "Masquer l'historique" : "Voir l'historique des versions"}
+          </button>
+          {historiqueOuvert && (
+            <div className="mt-2 grid gap-1.5">
+              {historique.map((h) => (
+                <div
+                  key={h.version}
+                  className="flex items-baseline gap-3 rounded-lg bg-secondary px-2.5 py-2 text-xs text-foreground"
+                >
+                  <span className="shrink-0 font-mono font-semibold text-muted-foreground">V{h.version}</span>
+                  <span className="min-w-0 flex-1">{h.detail}</span>
+                  <span className="shrink-0 font-mono text-muted-foreground">{h.montant}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {!estLeDernier ? (
         <p className="mt-3.5 text-xs leading-relaxed text-muted-foreground">

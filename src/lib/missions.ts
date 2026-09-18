@@ -131,6 +131,77 @@ export async function getStatutPaiementMission(missionId: string): Promise<Paiem
   return data?.statut ?? null;
 }
 
+export type ComplementPaiement = { montantDu: number; paye: boolean } | null;
+
+/**
+ * Complément pour heures supplémentaires (migration 0060) — même
+ * principe que getStatutPaiementMission : safe pour n'importe quel
+ * rôle, la page appelante a déjà vérifié la légitimité du participant.
+ * `null` = aucun complément n'a jamais été nécessaire sur cette mission.
+ */
+export async function getComplementPaiementMission(missionId: string): Promise<ComplementPaiement> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("paiements").select("complement_montant_du, complement_paye").eq("mission_id", missionId).maybeSingle();
+  if (!data || data.complement_montant_du === null) return null;
+  return { montantDu: data.complement_montant_du, paye: data.complement_paye };
+}
+
+export type LignePourFacturePrestataire = {
+  missionId: string;
+  createdAt: string;
+  lieu: string;
+  dateMission: string;
+  metier: MissionLignesRow["metier"];
+  heureDebutPrevue: string;
+  heureFinPrevue: string;
+  heureDebutReelle: string | null;
+  heureFinReelle: string | null;
+  finConfirmee: boolean;
+  tarifApplique: number;
+  tarifFinal: number | null;
+  tauxCommission: number;
+};
+
+/**
+ * Ligne d'UN prestataire sur une mission, pour SA propre facture —
+ * client admin, car `paiements` n'a pas de policy SELECT pour un
+ * prestataire (même principe que getLignesPrestataire,
+ * prestataire/_data.ts) : seul le taux de commission est relu, jamais
+ * `montant`/`montant_commission` (des totaux mission, potentiellement
+ * partagés entre plusieurs prestataires). `userId` doit être le
+ * titulaire de la ligne — vérifié ici, jamais délégué à une policy.
+ */
+export async function getLignePourFacturePrestataire(missionId: string, userId: string): Promise<LignePourFacturePrestataire | null> {
+  const admin = createAdminClient();
+
+  const { data: profil } = await admin.from("prestataires_profils").select("id").eq("user_id", userId).maybeSingle();
+  if (!profil) return null;
+
+  const [{ data: mission }, { data: ligne }, { data: paiement }] = await Promise.all([
+    admin.from("missions").select("id, created_at, lieu, date_mission").eq("id", missionId).maybeSingle(),
+    admin.from("mission_lignes").select("*").eq("mission_id", missionId).eq("prestataire_id", profil.id).maybeSingle(),
+    admin.from("paiements").select("statut, taux_commission").eq("mission_id", missionId).maybeSingle(),
+  ]);
+  if (!mission || !ligne || !paiement) return null;
+  if (paiement.statut !== "libere") return null;
+
+  return {
+    missionId: mission.id,
+    createdAt: mission.created_at,
+    lieu: mission.lieu,
+    dateMission: mission.date_mission,
+    metier: ligne.metier,
+    heureDebutPrevue: ligne.heure_debut,
+    heureFinPrevue: ligne.heure_fin,
+    heureDebutReelle: ligne.heure_debut_reelle,
+    heureFinReelle: ligne.heure_fin_reelle,
+    finConfirmee: ligne.heure_fin_statut === "confirmee",
+    tarifApplique: ligne.tarif_applique,
+    tarifFinal: ligne.tarif_final,
+    tauxCommission: paiement.taux_commission,
+  };
+}
+
 export type DevisPrefillMission = {
   prestation: string;
   date: string;

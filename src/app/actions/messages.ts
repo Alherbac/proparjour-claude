@@ -39,16 +39,16 @@ export async function envoyerMessage(
 
   const estRecruteur = mission.recruteur_id === user.id;
 
-  // Un prestataire ne doit pas pouvoir transmettre ses coordonnées
-  // personnelles au client pour sortir de ProParJour (voir
+  // Ni le prestataire ni le client ne doit pouvoir transmettre ses
+  // coordonnées personnelles pour sortir de ProParJour (voir
   // lib/coordonnees-interdites.ts) — contrôle serveur, jamais
-  // seulement une validation d'interface. Le client, lui, reste libre
-  // (il peut légitimement donner l'adresse exacte de la mission, etc.).
-  if (!estRecruteur) {
-    const coordonnees = detecterCoordonnees(texte);
-    if (coordonnees) {
-      return { success: false, error: messageCoordonneesBloquees(coordonnees) };
-    }
+  // seulement une validation d'interface, et la même règle pour les
+  // deux rôles. Une adresse de mission (rue, ville) reste toujours
+  // possible : detecterCoordonnees ne cherche qu'une forme de
+  // téléphone/e-mail/URL/réseau social, jamais un texte de lieu.
+  const coordonnees = detecterCoordonnees(texte);
+  if (coordonnees) {
+    return { success: false, error: messageCoordonneesBloquees(coordonnees) };
   }
 
   if (estRecruteur) {

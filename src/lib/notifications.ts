@@ -26,7 +26,14 @@ export type NotificationType =
   | "devis_accepte"
   | "devis_ajustement_demande"
   | "devis_refuse"
-  | "message_admin";
+  | "message_admin"
+  | "mission_debut_declare"
+  | "mission_debut_confirme"
+  | "mission_debut_conteste"
+  | "mission_fin_declaree"
+  | "mission_horaires_confirmes"
+  | "mission_horaires_contestes"
+  | "facture_disponible";
 
 /**
  * Best-effort : une notification qui échoue à s'écrire ne doit jamais

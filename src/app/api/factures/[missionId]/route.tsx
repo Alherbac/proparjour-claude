@@ -22,6 +22,16 @@ export async function GET(
   if (!mission) {
     return NextResponse.json({ error: "Mission introuvable." }, { status: 404 });
   }
+  // Durci (suivi d'exécution, 2026-09-17) : cette facture montre le
+  // montant TOTAL payé par le recruteur — jamais destinée à un
+  // prestataire (voir /api/factures/[missionId]/prestataire pour son
+  // propre justificatif, qui ne montre que sa part). S'appuyait déjà
+  // implicitement sur la RLS de `paiements` (mission.paiement reste
+  // null pour un non-recruteur), mais sans ce contrôle explicite un
+  // prestataire recevait un 400 confus plutôt qu'un refus clair.
+  if (mission.recruteur_id !== user.id) {
+    return NextResponse.json({ error: "Cette facture ne vous est pas accessible." }, { status: 403 });
+  }
   if (!mission.paiement || mission.paiement.statut === "en_attente" || mission.paiement.statut === "echec") {
     return NextResponse.json(
       { error: "Aucun paiement confirmé pour cette mission." },
