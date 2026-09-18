@@ -56,3 +56,7 @@ next-env.d.ts
 # copie de sauvegarde du projet, jamais compilée ni commitée
 # (exclue aussi de tsconfig.json)
 /_archive/
+
+# état local du CLI Supabase (lien de projet, versions détectées) —
+# jamais du code source, jamais commité
+/supabase/.temp/
