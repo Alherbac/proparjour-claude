@@ -40,10 +40,22 @@ export function ConnexionForm() {
   // (RecruteurSuccessScreen).
   const nextExplicite = next;
 
+  // /auth/confirm redirige ici avec ?erreur=... quand l'échange du lien
+  // (confirmation d'inscription ou réinitialisation de mot de passe)
+  // échoue — sans ce message, l'utilisateur atterrissait sur une page
+  // de connexion silencieuse, sans savoir pourquoi (lien expiré, déjà
+  // utilisé, ou une nouvelle demande l'a invalidé).
+  const MESSAGES_ERREUR: Record<string, string> = {
+    reinitialisation:
+      "Ce lien de réinitialisation a expiré ou a déjà été utilisé. Demandez-en un nouveau.",
+    confirmation: "Ce lien de confirmation a expiré ou a déjà été utilisé.",
+  };
+  const erreurLien = searchParams.get("erreur");
+
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(erreurLien ? MESSAGES_ERREUR[erreurLien] ?? null : null);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -73,6 +85,12 @@ export function ConnexionForm() {
       return;
     }
 
+    // Réinitialisé avant la navigation (jamais après) : si `push` ne
+    // change pas réellement de page pour une raison quelconque, le
+    // bouton ne doit pas rester bloqué en chargement indéfiniment,
+    // sans aucun retour visible (bug staging signalé — "il ne se
+    // passe rien visuellement").
+    setSubmitting(false);
     router.push(next ?? (await destinationSelonRole(supabase, signInData.user.id)));
     router.refresh();
   }
@@ -131,6 +149,12 @@ export function ConnexionForm() {
                 onChange={(event) => setMotDePasse(event.target.value)}
               />
             </FormField>
+
+            <p className="text-right text-sm">
+              <Link href="/mot-de-passe-oublie" className="text-primary underline">
+                Mot de passe oublié ?
+              </Link>
+            </p>
 
             {error && (
               <p className="text-sm font-medium text-destructive">{error}</p>
