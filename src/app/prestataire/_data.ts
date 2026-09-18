@@ -37,6 +37,43 @@ export const getSessionPrestataire = cache(async (): Promise<SessionPrestataire 
   };
 });
 
+/**
+ * Distingue, quand getSessionPrestataire renvoie null, "pas connecté"
+ * de "connecté mais inscription prestataire pas encore complétée"
+ * (bug staging : la confirmation d'e-mail renvoyait vers
+ * /inscription/recruteur au lieu de reprendre l'onboarding prestataire,
+ * et /prestataire lui-même renvoyait ensuite vers /connexion alors que
+ * la session existe déjà — voir _prestataire/wizard.tsx et
+ * /auth/confirm/route.ts). Même construction que
+ * client/_data.ts::profilRecruteurIncomplet, écrite indépendamment
+ * (Règle N°0).
+ */
+export const profilPrestataireIncomplet = cache(async (): Promise<boolean> => {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: profil } = await supabase.from("users").select("type").eq("id", user.id).maybeSingle();
+  return profil !== null && profil.type === null;
+});
+
+/**
+ * `role_intent` posé dans `user_metadata` au moment du signUp (voir
+ * wizard.tsx) — distingue un prestataire inachevé d'un recruteur
+ * inachevé qui atterrirait ici (les deux sont identiques en base :
+ * `users.type IS NULL`). Même construction que
+ * client/_data.ts::roleIntentSession, écrite indépendamment (Règle N°0).
+ */
+export const roleIntentSession = cache(async (): Promise<string | null> => {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return (user?.user_metadata?.role_intent as string | undefined) ?? null;
+});
+
 /** Toutes les lignes de mission de ce prestataire, mission et paiement inclus — source unique pour Votre activité ET Vos missions ET Revenus. */
 export const getLignesPrestataire = cache(async (profilId: string): Promise<LigneAvecMission[]> => {
   const supabase = await creerClientSession();

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Instrument_Serif, Public_Sans, IBM_Plex_Mono } from "next/font/google";
 import { Sidebar, type LienNav } from "@/app/client/_components/sidebar";
 import { MobileNav } from "@/app/client/_components/mobile-nav";
-import { getSessionClient, getMissionsClient, getOffresAvecCandidatures, candidaturesAExaminer, getConversationsClient } from "@/app/client/_data";
+import { getSessionClient, profilRecruteurIncomplet, roleIntentSession, getMissionsClient, getOffresAvecCandidatures, candidaturesAExaminer, getConversationsClient } from "@/app/client/_data";
 import { getNotifications } from "@/lib/notifications";
 
 /**
@@ -17,7 +17,23 @@ const ibmPlexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], 
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionClient();
-  if (!session) redirect("/connexion?next=/client");
+  if (!session) {
+    // Bug audit staging : un utilisateur déjà authentifié dont
+    // l'inscription n'a pas pu se terminer (confirmation d'e-mail
+    // interrompant la complétion du profil) n'a plus rien à faire sur
+    // /connexion — il doit reprendre son inscription, pas se
+    // reconnecter à un compte qui l'est déjà. `role_intent` distingue
+    // un recruteur inachevé d'un prestataire inachevé qui atterrirait
+    // ici par défaut (ex. clic sur son nom avant la fin de son
+    // onboarding, voir header.tsx) : sans lui il serait envoyé vers le
+    // formulaire recruteur au lieu de reprendre son propre parcours.
+    const incomplet = await profilRecruteurIncomplet();
+    if (incomplet) {
+      const roleIntent = await roleIntentSession();
+      redirect(roleIntent === "prestataire" ? "/inscription/prestataire?next=/client" : "/inscription/recruteur?next=/client");
+    }
+    redirect("/connexion?next=/client");
+  }
 
   const [missions, offres, notifications] = await Promise.all([
     getMissionsClient(session.userId),

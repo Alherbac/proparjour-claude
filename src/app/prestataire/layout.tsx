@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Instrument_Serif, Public_Sans, IBM_Plex_Mono } from "next/font/google";
 import { Sidebar, type LienNav } from "@/app/prestataire/_components/sidebar";
 import { MobileNav } from "@/app/prestataire/_components/mobile-nav";
-import { getSessionPrestataire, getLignesPrestataire, getConversationsPrestataire } from "@/app/prestataire/_data";
+import { getSessionPrestataire, profilPrestataireIncomplet, roleIntentSession, getLignesPrestataire, getConversationsPrestataire } from "@/app/prestataire/_data";
 import { getNotifications } from "@/lib/notifications";
 
 const instrumentSerif = Instrument_Serif({ subsets: ["latin"], weight: "400", variable: "--font-instrument-serif" });
@@ -11,7 +11,19 @@ const ibmPlexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], 
 
 export default async function PrestataireLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionPrestataire();
-  if (!session) redirect("/connexion?next=/prestataire");
+  if (!session) {
+    // Un prestataire déjà authentifié dont l'inscription n'a pas pu
+    // se terminer (confirmation d'e-mail interrompant la complétion
+    // du profil) n'a plus rien à faire sur /connexion — il doit
+    // reprendre son onboarding, pas se reconnecter à un compte qui
+    // l'est déjà (bug staging, même correctif que client/layout.tsx).
+    const incomplet = await profilPrestataireIncomplet();
+    if (incomplet) {
+      const roleIntent = await roleIntentSession();
+      redirect(roleIntent === "prestataire" ? "/inscription/prestataire?next=/prestataire" : "/inscription/recruteur?next=/prestataire");
+    }
+    redirect("/connexion?next=/prestataire");
+  }
 
   const [lignes, notifications] = await Promise.all([getLignesPrestataire(session.profilId), getNotifications(50)]);
   const conversations = await getConversationsPrestataire(session.userId, lignes);

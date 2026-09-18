@@ -33,6 +33,43 @@ export const getSessionClient = cache(async (): Promise<SessionClient | null> =>
   return { userId: user.id, email: user.email ?? "", profil, entreprise };
 });
 
+/**
+ * Distingue, quand getSessionClient renvoie null, "pas connecté" de
+ * "connecté mais inscription recruteur pas encore complétée" (bug
+ * audit staging : la confirmation d'e-mail interrompt la complétion
+ * du profil avant l'écriture de `users.type` — voir
+ * components/onboarding/recruteur/form.tsx). Le layout redirige alors
+ * vers la reprise de l'inscription plutôt que vers la connexion, qui
+ * n'a pas de sens pour quelqu'un déjà authentifié.
+ */
+export const profilRecruteurIncomplet = cache(async (): Promise<boolean> => {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: profil } = await supabase.from("users").select("type").eq("id", user.id).maybeSingle();
+  return profil !== null && profil.type === null;
+});
+
+/**
+ * `role_intent` posé dans `user_metadata` au moment du signUp (voir
+ * components/onboarding/prestataire/wizard.tsx et
+ * onboarding/recruteur/form.tsx) — seul moyen de distinguer un profil
+ * recruteur inachevé d'un profil prestataire inachevé : les deux sont
+ * identiques en base (`users.type IS NULL`, voir profilRecruteurIncomplet
+ * ci-dessus). Absent pour un compte créé avant cette version : on
+ * retombe alors sur le parcours recruteur historique.
+ */
+export const roleIntentSession = cache(async (): Promise<string | null> => {
+  const supabase = await creerClientSession();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return (user?.user_metadata?.role_intent as string | undefined) ?? null;
+});
+
 /** Toutes les missions du recruteur connecté, équipe affectée et paiement inclus — source unique pour Vue d'ensemble ET Vos missions. */
 export const getMissionsClient = cache(async (userId: string): Promise<MissionAvecEquipe[]> => {
   const supabase = await creerClientSession();
