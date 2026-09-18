@@ -42,9 +42,11 @@ export function TempsOuEtQuand({
         <p className="text-[13.5px] leading-[1.6] text-[#6B6660]">Dernier temps. Les entreprises filtrent d&rsquo;abord par ville.</p>
       </div>
 
-      <Field label="Votre ville principale">
-        <VilleInput value={values.ville} onChange={(v) => setField("ville", v)} error={bad.has("ville")} />
-      </Field>
+      <div id="ville">
+        <Field label="Votre ville principale">
+          <VilleInput value={values.ville} onChange={(v) => setField("ville", v)} error={bad.has("ville")} />
+        </Field>
+      </div>
 
       <div className="grid gap-2.5">
         <span className="flex flex-wrap items-center gap-2">
@@ -60,7 +62,7 @@ export function TempsOuEtQuand({
         </div>
       </div>
 
-      <div className="grid gap-2.5">
+      <div id="disponibilite" className="grid gap-2.5">
         <span className="text-[12px] font-semibold tracking-[0.05em] text-[#6B6660] uppercase">Vous êtes disponible</span>
         {DISPONIBILITE_VALUES.map((id) => {
           const on = values.disponibilite === id;
@@ -85,6 +87,7 @@ export function TempsOuEtQuand({
       </div>
 
       <button
+        id="accepteCgu"
         type="button"
         onClick={() => setField("accepteCgu", !values.accepteCgu)}
         className={`flex w-full items-start gap-[13px] rounded-[14px] border p-4 text-left transition-colors ${

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { tarifHoraireReference } from "@/lib/tarif";
 import { jourDeLaSemaine } from "@/config/jours-semaine";
 import { normaliserTexte } from "@/lib/similarite-texte";
+import { departementsDe, niveauProximite, pointsProximite, labelProximite } from "@/lib/geo-idf";
 import type { PrestatairesPublicsRow, OffresRow, MetierType } from "@/lib/supabase/database.types";
 
 /**
@@ -39,6 +40,16 @@ export type CritereMatch = {
   cle: CleCritere;
   label: string;
   etat: EtatCritere;
+  /**
+   * Contribution en points, quand elle diffère du tout-ou-rien binaire
+   * habituel (POIDS[cle] si "correspond", 0 sinon) — correction produit
+   * 2026-09-19 : la proximité géographique ("zone") est dégressive
+   * plutôt que binaire, la géographie ne devant jamais rendre un
+   * prestataire incompatible (`etat` reste "correspond"/"non_renseigne",
+   * jamais "ne_correspond_pas", même loin — voir lib/geo-idf.ts). Absent
+   * pour tous les autres critères : leur calcul n'est pas modifié.
+   */
+  points?: number;
 };
 
 /** Lot F §14/§15 — détail par contrainte (jamais un simple agrégat) : ce qui a permis d'affiner le "Pourquoi ce profil ?" sans dupliquer le calcul du score lui-même. */
@@ -116,12 +127,24 @@ const SEUIL_BON = 65;
 // Tolérance sur le tarif : un prestataire jusqu'à 15% au-dessus du tarif proposé reste "compatible".
 const TOLERANCE_TARIF = 1.15;
 
-function normaliserVille(v: string): string {
-  return v
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
+/**
+ * Niveau + points du critère "zone" — correction produit 2026-09-19 :
+ * remplace l'ancienne comparaison de ville en texte (qui traitait
+ * "Paris" et "Saint-Denis" comme deux villes sans rapport, sans jamais
+ * refléter qu'elles sont limitrophes) par une proximité par
+ * département, dégressive et jamais excluante (voir lib/geo-idf.ts).
+ * `etat` ne vaut jamais "ne_correspond_pas" : une ville différente de
+ * celle de la mission ne rend jamais un prestataire incompatible,
+ * seul son score en tient compte.
+ */
+function critereZone(deptMission: string | null, deptPrestataire: string | null, label: string): CritereMatch {
+  const niveau = niveauProximite(deptMission, deptPrestataire);
+  return {
+    cle: "zone",
+    label: `${label} : ${labelProximite(niveau).toLowerCase()}`,
+    etat: niveau === "non_renseignee" ? "non_renseigne" : "correspond",
+    points: pointsProximite(niveau, POIDS.zone),
+  };
 }
 
 /**
@@ -245,7 +268,7 @@ function etatAggregeContraintes(detail: ContrainteMatchDetail[]): EtatCritere {
 }
 
 function calculerScore(criteres: CritereMatch[]): number {
-  return criteres.reduce((total, c) => total + (c.etat === "correspond" ? POIDS[c.cle] : 0), 0);
+  return criteres.reduce((total, c) => total + (c.points ?? (c.etat === "correspond" ? POIDS[c.cle] : 0)), 0);
 }
 
 export async function recommanderPrestataires(besoin: BesoinMatching): Promise<ResultatMatching> {
@@ -275,8 +298,14 @@ export async function recommanderPrestataires(besoin: BesoinMatching): Promise<R
   const idsAvecExperience = new Set((experiences ?? []).map((e) => e.prestataire_id));
 
   const jourFr = jourDeLaSemaine(besoin.date);
-  const villeCible = normaliserVille(besoin.ville);
   const contraintesBesoin = besoin.contraintes ?? [];
+
+  // Résolution géographique par lot (une requête par ville UNIQUE,
+  // jamais une par candidat) — voir lib/geo-idf.ts.
+  const [deptMission, deptsParVille] = await Promise.all([
+    departementsDe([besoin.ville]).then((m) => m.get(besoin.ville.trim()) ?? null),
+    departementsDe(candidats.map((c) => c.ville)),
+  ]);
 
   const recommandations: Recommandation[] = candidats.map((prestataire) => {
     // Lot F §7 — trois états, jamais deux : une vraie indisponibilité
@@ -303,7 +332,7 @@ export async function recommanderPrestataires(besoin: BesoinMatching): Promise<R
     const experienceEtat: EtatCritere =
       prestataire.specialites.length > 0 || idsAvecExperience.has(prestataire.id) ? "correspond" : "ne_correspond_pas";
 
-    const zoneEtat: EtatCritere = normaliserVille(prestataire.ville) === villeCible ? "correspond" : "ne_correspond_pas";
+    const critereZoneMatch = critereZone(deptMission, deptsParVille.get(prestataire.ville.trim()) ?? null, "Zone d'intervention");
 
     const tarifRef = tarifHoraireReference(prestataire.tarif_montant, prestataire.tarif_type);
     // Inchangé depuis avant ce lot : sans tarif cible communiqué par le
@@ -323,7 +352,7 @@ export async function recommanderPrestataires(besoin: BesoinMatching): Promise<R
     const criteres: CritereMatch[] = [
       { cle: "disponible", label: "Disponible", etat: disponibleEtat },
       { cle: "experience", label: "Expérience correspondant à la mission", etat: experienceEtat },
-      { cle: "zone", label: "Zone d'intervention adaptée", etat: zoneEtat },
+      critereZoneMatch,
       { cle: "verifie", label: "Profil vérifié", etat: verifieEtat },
       { cle: "tarif", label: "Tarif compatible", etat: tarifEtat },
       { cle: "fiabilite", label: "Très bonne fiabilité", etat: fiabiliteEtat },
@@ -413,9 +442,15 @@ export async function recommanderMissionsPourPrestataire(prestataireUserId: stri
   const experienceEtat: EtatCritere =
     profil.specialites.length > 0 || (experiences ?? []).length > 0 ? "correspond" : "ne_correspond_pas";
   const verifieEtat: EtatCritere = profil.statut_verification === "valide" ? "correspond" : "ne_correspond_pas";
-  const villePrestataire = normaliserVille(profil.ville);
   const tarifRefPrestataire = tarifHoraireReference(profil.tarif_montant, profil.tarif_type);
   const planningRenseigne = profil.disponibilites.length > 0;
+
+  // Résolution géographique par lot — voir lib/geo-idf.ts et le même
+  // principe dans recommanderPrestataires ci-dessus.
+  const [deptPrestataire, deptsParOffre] = await Promise.all([
+    departementsDe([profil.ville]).then((m) => m.get(profil.ville.trim()) ?? null),
+    departementsDe(offres.map((o) => o.ville)),
+  ]);
 
   const resultats: MissionRecommandee[] = offres.map((offre) => {
     const jourFr = jourDeLaSemaine(offre.date_mission);
@@ -429,7 +464,11 @@ export async function recommanderMissionsPourPrestataire(prestataireUserId: stri
           ? "correspond"
           : "ne_correspond_pas";
 
-    const zoneEtat: EtatCritere = normaliserVille(offre.ville) === villePrestataire ? "correspond" : "ne_correspond_pas";
+    const critereZoneMatch = critereZone(
+      deptsParOffre.get(offre.ville.trim()) ?? null,
+      deptPrestataire,
+      "Votre zone d'intervention",
+    );
 
     // Symétrique de TOLERANCE_TARIF côté client : l'offre reste
     // compatible tant qu'elle ne descend pas de plus de ~13% sous le
@@ -439,7 +478,7 @@ export async function recommanderMissionsPourPrestataire(prestataireUserId: stri
     const criteres: CritereMatch[] = [
       { cle: "disponible", label: "Vous êtes disponible", etat: disponibleEtat },
       { cle: "experience", label: "Votre expérience correspond", etat: experienceEtat },
-      { cle: "zone", label: "Votre zone d'intervention correspond", etat: zoneEtat },
+      critereZoneMatch,
       { cle: "verifie", label: "Votre profil est vérifié", etat: verifieEtat },
       { cle: "tarif", label: "Votre tarif correspond", etat: tarifEtat },
       { cle: "fiabilite", label: "Votre fiabilité est excellente", etat: fiabiliteEtat },

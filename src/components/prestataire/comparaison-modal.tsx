@@ -92,6 +92,18 @@ export function ComparaisonModal({
                     </td>
                     {selection.map((r) => {
                       const critere = r.criteres.find((c) => c.cle === ligne.cle);
+                      // La proximité géographique est dégressive, jamais
+                      // excluante (correction produit 2026-09-19) : on
+                      // affiche le niveau ("Excellente"/"Très bonne"/…)
+                      // plutôt qu'un simple ✓, qui masquerait la nuance.
+                      if (ligne.cle === "zone" && critere) {
+                        const niveau = critere.label.split(" : ").pop();
+                        return (
+                          <td key={r.prestataire.id} className="py-2 text-center text-foreground">
+                            {critere.etat === "non_renseigne" ? <span className="text-muted-foreground/40">Non renseignée</span> : niveau}
+                          </td>
+                        );
+                      }
                       return (
                         <td key={r.prestataire.id} className="py-2 text-center">
                           {critere?.etat === "correspond" ? (

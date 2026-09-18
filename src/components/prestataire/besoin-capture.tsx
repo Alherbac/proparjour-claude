@@ -734,30 +734,30 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       )}
 
       {etape === "details" && chips.length > 0 && (
-        <div className="mx-auto max-w-[1180px]">
-          <button
-            type="button"
-            onClick={() => setEtape("saisie")}
-            className="mb-2.5 inline-flex items-center gap-1.5 text-[13px] text-ppj-text-3 transition-colors hover:text-ppj-ink"
-          >
-            <ArrowLeft className="size-3.5" />
-            Revenir à votre phrase
-          </button>
-          <h1
-            className="text-ppj-ink"
-            style={{ fontFamily: "var(--font-display-serif)", fontSize: "26px", lineHeight: 1.1, letterSpacing: "-0.018em" }}
-          >
-            Publier une offre
-          </h1>
-          <p className="mb-5 mt-1.5 max-w-[62ch] text-[15px] text-ppj-text-3">
-            Vous ne choisissez personne — les professionnels candidatent un par un.
-          </p>
+        <div className="mx-auto max-w-[1240px]">
+          <div className="flex flex-wrap items-baseline gap-[14px]">
+            <button
+              type="button"
+              onClick={() => setEtape("saisie")}
+              className="inline-flex items-center gap-1.5 text-[12.5px] text-[#6B6660] transition-colors hover:text-ppj-ink"
+            >
+              <ArrowLeft className="size-3.5" />
+              Revenir à votre phrase
+            </button>
+            <h1
+              className="text-ppj-ink"
+              style={{ fontFamily: "var(--font-display-serif)", fontSize: "30px", lineHeight: 1.05, letterSpacing: "-0.02em" }}
+            >
+              Publier une offre
+            </h1>
+            <span className="text-[13px] text-[#6B6660]">vous ne choisissez personne — les professionnels candidatent un par un</span>
+          </div>
 
           {/* Onglets — un par métier retenu, "+ Ajouter un métier" dans
               le même groupe. N'apparaissent qu'à partir de deux métiers
               (README §11) : avec un seul, tout tient dans un panneau. */}
           {modeMulti && (
-            <div role="tablist" className="mb-3 flex flex-wrap gap-1.5">
+            <div role="tablist" className="mb-3 mt-4 flex flex-wrap gap-2">
               <OngletBouton actif={ongletActif === "commun"} complet={communComplet} onClick={() => setOnglet("commun")} label="Commun à tous" />
               {chips.map((c) => {
                 const court = METIERS.find((m) => m.id === c.metier)?.filiere.split(" ")[0].replace("&", "").trim() || c.metier;
@@ -767,7 +767,8 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                     actif={ongletActif === c.metier}
                     complet={carteResoluePourPublication(c)}
                     onClick={() => setOnglet(c.metier)}
-                    label={`${court} ${c.quantite} poste${c.quantite > 1 ? "s" : ""}`}
+                    label={court}
+                    count={`${c.quantite} poste${c.quantite > 1 ? "s" : ""}`}
                   />
                 );
               })}
@@ -776,7 +777,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                   key={m.id}
                   type="button"
                   onClick={() => ajouterChip(m.id)}
-                  className="flex min-h-11 items-center gap-1.5 rounded-[11px] border border-dashed border-ppj-line-button px-3 text-[13px] font-medium text-ppj-text-3 transition-colors hover:border-ppj-ink hover:text-ppj-ink"
+                  className="flex items-center gap-[7px] rounded-[11px] border border-dashed border-[#DDD8D1] px-[15px] py-[11px] text-[13.5px] text-[#7A756D] transition-colors hover:border-ppj-ink hover:text-ppj-ink"
                 >
                   <Plus className="size-3.5" />
                   {infosFamille(m.id).emoji} {m.filiere}
@@ -785,59 +786,66 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
             </div>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-            {/* Colonne gauche — panneau de saisie */}
-            <div className="min-w-0 rounded-[18px] border border-ppj-line bg-white p-5">
+          <div className="mt-4 flex flex-col gap-[18px] lg:flex-row">
+            {/* Colonne gauche — panneau de saisie. flex (pas une piste de
+                grille fixe) : une piste "minmax(0,1fr) 340px" force la
+                colonne voisine à absorber toute la contrainte à 390px
+                (SPEC-PIXEL RÈGLE N°3) — jamais réintroduite. */}
+            <div className="min-w-0 flex-1 rounded-[18px] border border-ppj-line bg-white px-[22px] py-5">
               {(!modeMulti || ongletActif === "commun") && (
-                <div className={cn(modeMulti ? "" : "mb-5 border-b border-ppj-line-2 pb-5")}>
-                  <p className="mb-1 text-[15px] font-semibold text-ppj-ink">Commun à toute l&apos;offre</p>
-                  <p className="mb-3.5 text-[12px] text-ppj-text-3">
-                    Saisi une seule fois — les horaires et la rémunération se règlent dans chaque onglet métier.
-                  </p>
-                  <div className="grid gap-[13px]">
-                    <ChampCommun label="Date de l'offre" manquant={!date}>
-                      <EditeurDate value={date} onChange={setDate} onValider={() => {}} nomGroupe="date-commune" compact />
-                    </ChampCommun>
-                    <div>
-                      <ChampCommun label="Adresse exacte" manquant={!ville}>
-                        <VilleAutocompleteIdf value={ville ?? ""} onChange={setVille} className={cn(!ville && "[&_input]:border-primary [&_input]:border-[1.5px]")} />
+                <div className={cn(modeMulti ? "" : "mb-4 border-b border-ppj-line-2 pb-4")}>
+                  <div className="mb-4 flex flex-wrap items-baseline gap-[10px]">
+                    <span className="text-[15px] font-semibold text-ppj-ink">Commun à toute l&apos;offre</span>
+                    <span className="text-[12.5px] text-[#7A756D]">
+                      saisi une seule fois — les horaires et la rémunération se règlent dans chaque onglet métier
+                    </span>
+                  </div>
+                  <div className="grid gap-4">
+                    <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+                      <ChampCommun label="Date de l'offre" manquant={!date}>
+                        <EditeurDate value={date} onChange={setDate} onValider={() => {}} nomGroupe="date-commune" compact />
                       </ChampCommun>
-                      {ambiguiteVille && (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-ppj-fill px-3 py-2.5 text-[12.5px] text-ppj-ink">
-                          <MapPin className="size-3.5 shrink-0 text-primary" />
-                          <span>
-                            Nous pensons que c&apos;est à <strong className="font-semibold">{ambiguiteVille.ville}</strong>.
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setAmbiguiteVille(null)}
-                            className="font-semibold text-primary underline underline-offset-2"
-                          >
-                            Confirmer
-                          </button>
-                        </div>
-                      )}
+                      <div>
+                        <ChampCommun label="Adresse exacte" manquant={!ville}>
+                          <VilleAutocompleteIdf value={ville ?? ""} onChange={setVille} className={cn(!ville && "[&_input]:border-primary [&_input]:border-[1.5px]")} />
+                        </ChampCommun>
+                        {ambiguiteVille && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-ppj-fill px-3 py-2.5 text-[12.5px] text-ppj-ink">
+                            <MapPin className="size-3.5 shrink-0 text-primary" />
+                            <span>
+                              Nous pensons que c&apos;est à <strong className="font-semibold">{ambiguiteVille.ville}</strong>.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setAmbiguiteVille(null)}
+                              className="font-semibold text-primary underline underline-offset-2"
+                            >
+                              Confirmer
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <ChampCommun label="Titre de l'offre">
+                    <ChampCommun label="Titre de l'offre" manquant={!titre.trim()}>
                       <input
                         value={titre}
                         onChange={(e) => setTitre(e.target.value)}
                         placeholder={titreParDefaut}
-                        className={champInputClass}
+                        className={champClass(!titre.trim())}
                       />
                     </ChampCommun>
-                    <ChampCommun label="Contexte" hint="vu par tous les candidats">
+                    <ChampCommun label="Contexte" description="vu par tous les candidats">
                       <textarea
                         value={messageFinal()}
                         onChange={(e) => setMessagePersonnalise(e.target.value)}
                         rows={3}
                         placeholder="Type de lieu, affluence attendue, contact sur place, accès et étage…"
-                        className={cn(champInputClass, "resize-none leading-[1.5]")}
+                        className={cn(champClass(false), "resize-none text-[15.5px] leading-[1.5]")}
                       />
                     </ChampCommun>
 
                     <div>
-                      <p className="mb-1.5 text-[12.5px] font-semibold text-ppj-ink">Prérequis supplémentaires</p>
+                      <p className="mb-[7px] text-[13px] font-semibold text-ppj-ink">Prérequis supplémentaires</p>
                       <div className="grid gap-1.5">
                         {prerequis.map((p, i) => (
                           <div key={i} className="flex items-center gap-1.5">
@@ -846,7 +854,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                               value={p}
                               onChange={(e) => modifierPrerequis(i, e.target.value)}
                               placeholder={SUGGESTIONS_PREREQUIS[i % SUGGESTIONS_PREREQUIS.length]}
-                              className="w-full rounded-[13px] border border-ppj-line-field bg-ppj-field px-3.5 py-2.5 text-[13.5px] text-ppj-ink outline-none focus:border-primary"
+                              className="w-full rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-3.5 py-2.5 text-[13.5px] text-ppj-ink outline-none focus:border-primary"
                             />
                             <button
                               type="button"
@@ -907,27 +915,27 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
             </div>
 
             {/* Colonne droite — récapitulatif de l'offre et publication */}
-            <div className="flex min-w-0 flex-col gap-3.5">
-              <div className="rounded-[18px] border border-ppj-line bg-white p-[18px]">
-                <span className="font-mono text-[12px] uppercase tracking-[0.16em] text-ppj-text-5">Votre offre</span>
-                <div className="mt-3 grid gap-2 text-[13.5px]">
+            <div className="flex min-w-0 flex-none flex-col gap-[14px] lg:w-[340px]">
+              <div className="rounded-[18px] border border-ppj-line bg-white p-4">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-[#98938B]">Votre offre</span>
+                <div className="mt-3 grid gap-[9px] text-[13.5px]">
                   <span className="flex items-center justify-between gap-3">
-                    <span className="text-ppj-ink">{date ? formatDateFr(date) : "Date à préciser"}</span>
-                    <span className="text-ppj-text-3">{ville ?? "Adresse à préciser"}</span>
+                    <span className="text-[#6B6660]">{date ? formatDateFr(date) : "Date à préciser"}</span>
+                    <span className="text-ppj-ink">{ville ?? "Adresse à préciser"}</span>
                   </span>
-                  <span className="my-0.5 block h-px bg-ppj-line-2" />
+                  <span className="block h-px bg-[#EFEBE6]" />
                   {chips.map((c) => {
                     const info = infosFamille(c.metier);
                     return (
                       <span key={c.metier} className="flex items-center justify-between gap-3">
-                        <span className="text-ppj-text-2">{info.filiere}</span>
-                        <span className="font-medium text-ppj-ink">
+                        <span className="text-[#6B6660]">{info.filiere}</span>
+                        <span className="text-ppj-ink">
                           {c.quantite} poste{c.quantite > 1 ? "s" : ""}
                         </span>
                       </span>
                     );
                   })}
-                  <span className="my-0.5 block h-px bg-ppj-line-2" />
+                  <span className="block h-px bg-[#EFEBE6]" />
                   <span className="flex items-center justify-between gap-3 font-semibold text-ppj-ink">
                     <span>Postes à pourvoir</span>
                     <span>{totalPostes}</span>
@@ -935,68 +943,74 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                 </div>
               </div>
 
-              <div className="rounded-[18px] border border-ppj-line bg-white p-[18px]">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-[13.5px] font-semibold text-ppj-ink">Avant de publier</p>
-                  {manques.length > 0 && <span className="text-[12px] text-ppj-red-text">{manques.length} à compléter</span>}
+              <div className="rounded-[18px] border border-[#F8D3D1] bg-white p-4">
+                <div className="mb-[10px] flex items-baseline gap-2">
+                  <p className="text-[13px] font-semibold text-[#8E2A26]">Avant de publier</p>
+                  {manques.length > 0 && (
+                    <span className="ml-auto font-mono text-[11px] text-[#6B6660]">{manques.length} à compléter</span>
+                  )}
                 </div>
                 {manques.length === 0 ? (
                   <p className="flex items-center gap-2 text-[13px] font-medium" style={{ color: "#2E7D4F" }}>
                     <Check /> Tout est renseigné.
                   </p>
                 ) : (
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-[7px]">
                     {manques.map((m, i) => (
                       <button
                         key={`${m.label}-${m.scope}-${i}`}
                         type="button"
                         onClick={() => setOnglet(m.onglet)}
-                        className="flex min-h-11 items-center gap-2.5 rounded-lg px-1.5 text-left text-[13px] font-semibold text-ppj-red-text transition-colors hover:bg-ppj-red-bg"
+                        className={cn(
+                          "flex items-baseline gap-2 text-left font-semibold text-[#8E2A26] transition-colors hover:underline",
+                          modeMulti ? "text-[12.5px]" : "text-[13px]",
+                        )}
                       >
-                        <Dot /> {m.label} — {m.scope}
+                        <Dot /> {m.label} <span className="font-normal text-[#98938B]">— {m.scope}</span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div className="rounded-[18px] border border-ppj-line bg-ppj-fill p-[18px]">
-                <p className="text-[13.5px] font-semibold text-ppj-ink">Ce qui se passe ensuite</p>
-                <p className="mt-2 text-[12.5px] leading-[1.6] text-ppj-text-2">
+              <div className="rounded-[18px] border border-[#E6E2DC] bg-[#F4F1EC] p-4">
+                <p className="text-[13px] font-semibold text-ppj-ink">Ce qui se passe ensuite</p>
+                <p className="mt-2 text-[12.5px] leading-[1.55] text-[#6B6660]">
                   L&apos;offre devient visible par les professionnels de ces métiers. Ils candidatent un par un ;
                   vous consultez chaque profil, puis vous retenez ou vous écartez.
                 </p>
-                <p className="mt-2 text-[12.5px] leading-[1.6] text-ppj-text-2">Aucun panier, aucun paiement à ce stade.</p>
+                <p className="mt-2 text-[12.5px] leading-[1.55] text-[#6B6660]">Aucun panier, aucun paiement à ce stade.</p>
               </div>
 
-              <Button
-                className="min-h-[50px] w-full rounded-[13px] bg-primary text-[15px] font-semibold text-white hover:bg-[#B8130F]"
-                disabled={!pretPourPublication || envoiPublication}
-                onClick={publierDirectement}
-              >
-                <Send className="size-3.5" />
-                {envoiPublication ? "Publication..." : "Publier l'offre"}
-              </Button>
+              <div className="grid gap-2">
+                <Button
+                  className="min-h-[50px] w-full rounded-[13px] bg-primary text-[15px] font-semibold text-white hover:bg-[#B8130F]"
+                  disabled={!pretPourPublication || envoiPublication}
+                  onClick={publierDirectement}
+                >
+                  <Send className="size-3.5" />
+                  {envoiPublication ? "Publication..." : "Publier l'offre"}
+                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={enregistrerBrouillon}
+                    className="min-h-[42px] rounded-[12px] border border-[#DDD8D1] bg-white text-[13.5px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
+                  >
+                    Enregistrer le brouillon
+                  </button>
+                  <Link
+                    href="/client/candidatures"
+                    className="flex min-h-[42px] items-center justify-center rounded-[12px] border border-[#DDD8D1] bg-white text-[13.5px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
+                  >
+                    Candidatures
+                  </Link>
+                </div>
+              </div>
               {!pretPourPublication && (
                 <p className="-mt-2 text-center text-[12px] text-ppj-text-3">Complétez les informations manquantes ci-dessus pour publier.</p>
               )}
               {erreurPublication && <p className="-mt-2 text-center text-[13px] font-medium text-destructive">{erreurPublication}</p>}
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={enregistrerBrouillon}
-                  className="min-h-11 rounded-[13px] border border-ppj-line-button bg-white text-[13.5px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
-                >
-                  Enregistrer le brouillon
-                </button>
-                <Link
-                  href="/client/candidatures"
-                  className="flex min-h-11 items-center justify-center rounded-[13px] border border-ppj-line-button bg-white text-[13.5px] font-semibold text-ppj-ink transition-colors hover:border-ppj-ink"
-                >
-                  Candidatures
-                </Link>
-              </div>
             </div>
           </div>
         </div>
@@ -1005,17 +1019,38 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   );
 }
 
-const champInputClass =
-  "w-full rounded-[13px] border border-ppj-line-field bg-ppj-field px-3.5 py-3 text-[14.5px] text-ppj-ink placeholder:text-ppj-text-4 focus:outline-none";
+/**
+ * Champ de saisie principal — même grammaire visuelle que "Proposer la
+ * mission" (dossier design, cadres "6a"/"6b"/"6c") : bordure rouge
+ * 1.5px sur fond blanc quand le champ est requis et vide, bordure
+ * neutre sur fond #FCFBF9 sinon.
+ */
+function champClass(manquant: boolean) {
+  return manquant
+    ? "w-full rounded-[12px] border-[1.5px] border-primary bg-white px-[14px] py-[15px] text-[16px] text-ppj-ink placeholder:text-[#98938B] focus:outline-none"
+    : "w-full rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-[14px] py-[15px] text-[16px] text-ppj-ink placeholder:text-[#98938B] focus:outline-none";
+}
 
 /**
- * Onglet du groupe "Commun / métiers" — même pastille de complétude
- * que "Proposer la mission" (README §11) : rouge si incomplet, vert
- * si prêt, rouge clair quand l'onglet est actif (lisibilité sur fond
- * noir).
+ * Onglet du groupe "Commun / métiers" — même forme que "Proposer la
+ * mission" (dossier design, cadre "6c") : rouge si incomplet, coche
+ * verte si prêt (jamais un simple changement de couleur — c'est une
+ * forme différente dans la référence), rouge clair quand l'onglet est
+ * actif.
  */
-function OngletBouton({ actif, complet, onClick, label }: { actif: boolean; complet: boolean; onClick: () => void; label: string }) {
-  const couleurPastille = actif ? "#FF8A85" : complet ? "#2E7D4F" : "#E21D1B";
+function OngletBouton({
+  actif,
+  complet,
+  onClick,
+  label,
+  count,
+}: {
+  actif: boolean;
+  complet: boolean;
+  onClick: () => void;
+  label: string;
+  count?: string;
+}) {
   return (
     <button
       type="button"
@@ -1023,33 +1058,68 @@ function OngletBouton({ actif, complet, onClick, label }: { actif: boolean; comp
       aria-selected={actif}
       onClick={onClick}
       className={cn(
-        "flex min-h-11 items-center gap-1.5 rounded-[11px] px-3 text-[13px] font-medium transition-colors",
-        actif ? "bg-[#1A1917] text-[#FBFAF8]" : "border border-ppj-line bg-white text-ppj-ink hover:border-ppj-ink",
+        "flex items-center gap-[7px] rounded-[11px] px-[15px] py-[11px] text-[13.5px] font-semibold transition-colors",
+        actif ? "bg-[#1A1917] text-[#FBFAF8]" : "border border-[#E6E2DC] bg-white text-ppj-ink hover:border-ppj-ink",
       )}
     >
-      <span className="block size-[6px] shrink-0 rounded-full" style={{ backgroundColor: couleurPastille }} />
       {label}
+      {count !== undefined && <span className={cn("font-normal", actif ? "text-[#B5B0A8]" : "text-[#7A756D]")}>{count}</span>}
+      {actif ? (
+        <span className="block size-[6px] shrink-0 rounded-full" style={{ backgroundColor: "#FF8A85" }} />
+      ) : complet ? (
+        <CheckMini />
+      ) : (
+        <span className="block size-[6px] shrink-0 rounded-full" style={{ backgroundColor: "#E21D1B" }} />
+      )}
     </button>
+  );
+}
+
+function CheckMini() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#2E7D4F"
+      strokeWidth="3.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
   );
 }
 
 function ChampCommun({
   label,
+  description,
   hint,
   manquant,
   children,
 }: {
   label: string;
+  /** Précision courte à côté du libellé (dossier design, cadres "6a"/"6b"/"6c") — jamais un badge générique quand la référence porte une phrase spécifique. */
+  description?: string;
   hint?: string;
   manquant?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <span className="mb-1.5 flex items-center gap-2 text-[12.5px] font-semibold text-ppj-ink">
+      <span
+        className={cn(
+          "mb-[7px] flex items-center gap-[7px] text-[13px] font-semibold",
+          manquant ? "text-[#8E2A26]" : "text-ppj-ink",
+        )}
+      >
         {label}
+        {description && <span className="font-normal text-[#98938B]">— {description}</span>}
         {manquant && <BadgeManquant>requis</BadgeManquant>}
-        {!manquant && hint && <span className="font-normal text-ppj-text-4">— {hint}</span>}
+        {!manquant && hint && <span className="font-normal text-[#98938B]">— {hint}</span>}
       </span>
       {children}
     </div>
@@ -1057,11 +1127,11 @@ function ChampCommun({
 }
 
 function Dot() {
-  return <span className="block size-[15px] flex-none rounded-full border-[1.5px] border-primary" />;
+  return <span className="block size-[4px] flex-none rounded-full bg-primary" style={{ transform: "translateY(-3px)" }} />;
 }
 
 function BadgeManquant({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-full bg-primary px-2 py-[3px] text-[12px] text-white">{children}</span>;
+  return <span className="rounded-full bg-primary px-[7px] py-[3px] text-[10px] text-white">{children}</span>;
 }
 
 /**
@@ -1076,17 +1146,38 @@ function EditeurDate({
   onValider,
   nomGroupe,
   compact,
+  initialementOuvert,
 }: {
   value: string | null;
   onChange: (d: string | null) => void;
   onValider: () => void;
   nomGroupe: string;
   compact?: boolean;
+  /** "Date propre à ce métier" gère déjà elle-même son repli/ouverture (bouton + rendu conditionnel) — force l'ouverture ici pour ne pas imbriquer deux replis. */
+  initialementOuvert?: boolean;
 }) {
   const aujourdhui = aujourdhuiIso();
   const [choix, setChoix] = useState<"asap" | "precise" | "inconnue">(
     value === null ? "inconnue" : value === aujourdhui ? "asap" : "precise",
   );
+  // Repliée dès qu'un choix a été fait (README design "Publier une
+  // offre" simplifié) — une seule ligne "valeur + Modifier", jamais
+  // les 3 options en permanence une fois la décision prise. Ouverte
+  // d'emblée seulement quand rien n'a encore été choisi.
+  const [ouvert, setOuvert] = useState(initialementOuvert ?? value === null);
+
+  if (!ouvert) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOuvert(true)}
+        className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-[14px] py-[15px] text-left text-[16px] text-ppj-ink"
+      >
+        <span>{value ? formatDateFr(value) : "À définir plus tard"}</span>
+        <span className="shrink-0 text-[12.5px] font-semibold text-primary">Modifier</span>
+      </button>
+    );
+  }
 
   function optionClass(actif: boolean) {
     return cn(
@@ -1106,6 +1197,7 @@ function EditeurDate({
             setChoix("asap");
             onChange(aujourdhui);
             onValider();
+            setOuvert(false);
           }}
         />
         Dès que possible
@@ -1123,6 +1215,7 @@ function EditeurDate({
             if (e.target.value) {
               onChange(e.target.value);
               onValider();
+              setOuvert(false);
             }
           }}
           className="ml-6 rounded-[14px] border border-ppj-line-field bg-ppj-field px-3 py-2 text-sm text-ppj-ink"
@@ -1137,6 +1230,7 @@ function EditeurDate({
             setChoix("inconnue");
             onChange(null);
             onValider();
+            setOuvert(false);
           }}
         />
         Je ne sais pas encore
@@ -1179,10 +1273,41 @@ function PanneauMetier({
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[12px] text-ppj-text-3">Vérifié : disponibilité, expérience, présentation.</p>
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={cn(
+            "grid size-[30px] flex-none place-items-center rounded-[9px] border text-[14px]",
+            info.accent.bgSoft,
+            info.accent.border,
+            info.accent.text,
+          )}
+          style={{ fontFamily: "var(--font-display-serif)" }}
+        >
+          {info.filiere.charAt(0)}
+        </span>
+        <span className="text-[15px] font-semibold text-ppj-ink">{info.filiere}</span>
+
+        <span className="ml-auto flex flex-none items-center gap-[9px]">
+          <span className="text-[12.5px] text-[#6B6660]">Postes à pourvoir</span>
+          <button
+            type="button"
+            onClick={() => onAjusterQuantite(-1)}
+            aria-label="Réduire le nombre de postes"
+            className="grid size-[32px] place-items-center rounded-[9px] border border-[#E6E2DC] text-[15px] text-ppj-ink transition-colors hover:border-ppj-ink"
+          >
+            −
+          </button>
+          <span className="min-w-[16px] text-center text-[15.5px] font-semibold tabular-nums text-ppj-ink">{chip.quantite}</span>
+          <button
+            type="button"
+            onClick={() => onAjusterQuantite(1)}
+            aria-label="Augmenter le nombre de postes"
+            className="grid size-[32px] place-items-center rounded-[9px] border border-[#E6E2DC] text-[15px] text-ppj-ink transition-colors hover:border-ppj-ink"
+          >
+            +
+          </button>
+        </span>
+
         <button
           type="button"
           onClick={onRetirer}
@@ -1192,29 +1317,7 @@ function PanneauMetier({
           <X className="size-4" />
         </button>
       </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2.5">
-        <span className="text-[12.5px] font-semibold text-ppj-ink">Postes à pourvoir</span>
-        <div className="flex items-center gap-1.5 rounded-full border border-ppj-line-field bg-ppj-field px-1 py-1">
-          <button
-            type="button"
-            onClick={() => onAjusterQuantite(-1)}
-            aria-label="Réduire le nombre de postes"
-            className="flex size-7 items-center justify-center rounded-full text-ppj-ink transition-colors hover:bg-white"
-          >
-            −
-          </button>
-          <span className="min-w-[1.5em] text-center text-sm font-semibold tabular-nums text-ppj-ink">{chip.quantite}</span>
-          <button
-            type="button"
-            onClick={() => onAjusterQuantite(1)}
-            aria-label="Augmenter le nombre de postes"
-            className="flex size-7 items-center justify-center rounded-full text-ppj-ink transition-colors hover:bg-white"
-          >
-            +
-          </button>
-        </div>
-      </div>
+      <p className="mt-2 text-[12.5px] text-[#7A756D]">Vérifié : disponibilité, expérience, présentation.</p>
 
       {chip.quantiteIncertaine && (
         <div className="mt-3 rounded-[14px] bg-ppj-fill px-3.5 py-3">
@@ -1229,55 +1332,62 @@ function PanneauMetier({
         </div>
       )}
 
-      <div className="mt-4 grid gap-[13px] border-t border-ppj-line-2 pt-4">
-        <ChampCommun label="Horaires du poste" manquant={!(chip.heureDebut && chip.heureFin)}>
-          <div className="flex items-center gap-2">
+      <div className="mt-4 grid gap-4 border-t border-ppj-line-2 pt-4">
+        <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-[1fr_1fr_1.3fr]">
+          <ChampCommun label="Début" manquant={!chip.heureDebut}>
             <input
               type="time"
               value={chip.heureDebut ?? ""}
               onChange={(e) => onModifier({ heureDebut: e.target.value || null })}
-              className={inputHoraireClass(!chip.heureDebut)}
+              className={champClass(!chip.heureDebut)}
             />
-            <span className="text-[13px] text-ppj-text-4">→</span>
+          </ChampCommun>
+          <ChampCommun label="Fin" manquant={!chip.heureFin}>
             <input
               type="time"
               value={chip.heureFin ?? ""}
               onChange={(e) => onModifier({ heureFin: e.target.value || null })}
-              className={inputHoraireClass(!chip.heureFin)}
+              className={champClass(!chip.heureFin)}
             />
-          </div>
-          {chip.moment && !chip.heureDebut && (
-            <p className="mt-1.5 text-[12px] text-ppj-text-3">{LABEL_MOMENT[chip.moment]} — horaires à préciser</p>
-          )}
-        </ChampCommun>
-
-        <ChampCommun label="Rémunération proposée" manquant={!(chip.tarifHoraire && chip.tarifHoraire > 0)}>
-          <span className="flex items-center gap-1.5">
-            <input
-              type="number"
-              min={0}
-              step="0.5"
-              value={chip.tarifHoraire ?? ""}
-              onChange={(e) => onModifier({ tarifHoraire: Number(e.target.value) || null })}
-              placeholder="Ex. 15"
-              aria-label={`Tarif horaire pour ${info.filiere}`}
-              className={cn(champInputClass, "w-32")}
-            />
-            <span className="text-[13.5px] text-ppj-text-3">€/h</span>
-          </span>
-        </ChampCommun>
+          </ChampCommun>
+          <ChampCommun label="Rémunération proposée" manquant={!(chip.tarifHoraire && chip.tarifHoraire > 0)}>
+            <span className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                value={chip.tarifHoraire ?? ""}
+                onChange={(e) => onModifier({ tarifHoraire: Number(e.target.value) || null })}
+                placeholder="Ex. 15"
+                aria-label={`Tarif horaire pour ${info.filiere}`}
+                className={champClass(!(chip.tarifHoraire && chip.tarifHoraire > 0))}
+              />
+              <span className="shrink-0 text-[13.5px] text-[#6B6660]">€/h</span>
+            </span>
+          </ChampCommun>
+        </div>
+        {chip.moment && !chip.heureDebut && (
+          <p className="-mt-2 text-[12px] text-ppj-text-3">{LABEL_MOMENT[chip.moment]} — horaires à préciser</p>
+        )}
 
         {chip.date && (
           <ChampCommun label="Date propre à ce métier" hint="différente de la date commune">
             <button
               type="button"
               onClick={() => setEditionDate((v) => !v)}
-              className="rounded-[13px] border border-ppj-line-field bg-ppj-field px-3.5 py-3 text-left text-[14px] text-ppj-ink"
+              className="rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-3.5 py-3 text-left text-[14px] text-ppj-ink"
             >
               {formatDateFr(chip.date)}
             </button>
             {editionDate && (
-              <EditeurDate value={chip.date} onChange={(d) => onModifier({ date: d })} onValider={() => setEditionDate(false)} nomGroupe={`date-${chip.metier}`} compact />
+              <EditeurDate
+                value={chip.date}
+                onChange={(d) => onModifier({ date: d })}
+                onValider={() => setEditionDate(false)}
+                nomGroupe={`date-${chip.metier}`}
+                compact
+                initialementOuvert
+              />
             )}
           </ChampCommun>
         )}
@@ -1291,35 +1401,46 @@ function PanneauMetier({
       </div>
 
       {(chip.contexte || chip.contraintes.length > 0) && (
-        <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-ppj-line-2 pt-4">
-          {chip.contexte && (
-            <span className={cn("inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-xs font-medium text-ppj-ink", info.accent.bgSoft)}>
-              {chip.contexte.label}
-              {!chip.contexte.certain && <span className="text-ppj-text-3">correct&nbsp;?</span>}
-              <button
-                type="button"
-                onClick={() => onModifier({ contexte: null })}
-                aria-label="Retirer le contexte"
-                className="text-ppj-text-3/70 hover:text-primary"
+        <div className="mt-4 border-t border-ppj-line-2 pt-4">
+          <p className="mb-2 text-[13px] font-semibold text-ppj-ink">Contraintes détectées</p>
+          <div className="flex flex-wrap gap-[7px]">
+            {chip.contexte && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-[13px] py-[8px] text-[12.5px] font-medium",
+                  chip.contexte.certain ? "bg-[#1A1917] text-[#FBFAF8]" : "border border-[#EAE6E0] bg-white text-[#5F5B54]",
+                )}
               >
-                <X className="size-3" />
-              </button>
-            </span>
-          )}
-          {chip.contraintes.map((c) => (
-            <span key={c.label} className="inline-flex items-center gap-1.5 rounded-[8px] bg-ppj-fill px-2.5 py-1 text-xs font-medium text-ppj-ink">
-              {c.label}
-              {c.niveau === "prefere" && <span className="text-ppj-text-3">souhaité</span>}
-              <button
-                type="button"
-                onClick={() => onRetirerContrainte(c.label)}
-                aria-label={`Retirer la contrainte ${c.label}`}
-                className="text-ppj-text-3/70 hover:text-primary"
+                {chip.contexte.label}
+                {!chip.contexte.certain && <span className="text-[#98938B]">correct&nbsp;?</span>}
+                <button
+                  type="button"
+                  onClick={() => onModifier({ contexte: null })}
+                  aria-label="Retirer le contexte"
+                  className="opacity-70 hover:text-primary"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            )}
+            {chip.contraintes.map((c) => (
+              <span
+                key={c.label}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#1A1917] px-[13px] py-[8px] text-[12.5px] font-medium text-[#FBFAF8]"
               >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
+                {c.label}
+                {c.niveau === "prefere" && <span className="text-[#B5B0A8]">souhaité</span>}
+                <button
+                  type="button"
+                  onClick={() => onRetirerContrainte(c.label)}
+                  aria-label={`Retirer la contrainte ${c.label}`}
+                  className="opacity-70 hover:text-primary"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1350,12 +1471,6 @@ function PanneauMetier({
       )}
     </div>
   );
-}
-
-function inputHoraireClass(manquant: boolean) {
-  return manquant
-    ? "flex-1 rounded-[11px] border-[1.5px] border-primary bg-white px-3 py-[9px] text-[14px] text-ppj-ink focus:outline-none"
-    : "flex-1 rounded-[11px] border border-ppj-line-field bg-ppj-field px-3 py-[10px] text-[14px] text-ppj-ink focus:outline-none";
 }
 
 /** Lot C — met en forme la valeur brute d'une Ambiguite ("date" en ISO, "horaires" en HH:mm ou HH:mm-HH:mm) pour l'afficher dans le bouton de confirmation, sans dupliquer la logique de formatage déjà utilisée pour l'affichage normal des cartes. */

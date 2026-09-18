@@ -14,8 +14,14 @@ import { cn } from "@/lib/utils";
 
 async function getPrestataire(id: string) {
   const supabase = await createClient();
+  // SKIP_KYC_VALIDATION (jamais en production, voir migration 0061) :
+  // même colonnes, sans exiger statut_verification = 'valide' — sinon
+  // un prestataire trouvé par la recherche en mode test (même bascule)
+  // retomberait quand même sur un 404 en cliquant sur sa fiche.
+  const table =
+    process.env.SKIP_KYC_VALIDATION === "true" ? "prestataires_publics_test_sans_validation" : "prestataires_publics";
   const { data } = await supabase
-    .from("prestataires_publics")
+    .from(table)
     .select("*")
     .eq("id", id)
     .maybeSingle();

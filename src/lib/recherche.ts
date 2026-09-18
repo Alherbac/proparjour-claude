@@ -157,7 +157,14 @@ export async function rechercherPrestataires(filtres: RechercheFiltres) {
   const from = (page - 1) * RESULTATS_PAR_PAGE;
   const to = from + RESULTATS_PAR_PAGE - 1;
 
-  let query = supabase.from("prestataires_publics").select("*", { count: "exact" });
+  // SKIP_KYC_VALIDATION (jamais en production, voir migration 0061) :
+  // même table de colonnes que prestataires_publics, sans exiger
+  // statut_verification = 'valide' — pour pouvoir trouver et proposer
+  // une mission à un prestataire inscrit pendant que la vérification
+  // manuelle par l'équipe ProParJour n'est pas encore opérationnelle.
+  const table =
+    process.env.SKIP_KYC_VALIDATION === "true" ? "prestataires_publics_test_sans_validation" : "prestataires_publics";
+  let query = supabase.from(table).select("*", { count: "exact" });
 
   if (filtres.metier) {
     query = query.eq("metier", filtres.metier);

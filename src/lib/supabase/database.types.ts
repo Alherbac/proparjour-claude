@@ -31,7 +31,7 @@ export type MissionStatutType =
 
 export type LigneStatutType = "en_attente" | "acceptee" | "refusee";
 
-export type MessageType = "texte" | "systeme" | "devis";
+export type MessageType = "texte" | "systeme" | "devis" | "execution";
 
 export type PaiementStatutType =
   | "en_attente"
@@ -218,6 +218,8 @@ export type MissionsRow = {
   updated_at: string;
 };
 
+export type StatutHoraireDeclareType = "declaree" | "confirmee" | "contestee";
+
 export type MissionLignesRow = {
   id: string;
   mission_id: string;
@@ -231,6 +233,18 @@ export type MissionLignesRow = {
   refus_automatique: boolean;
   created_at: string;
   updated_at: string;
+  // Suivi d'exécution (migration 0059) — voir actions/execution-mission.ts.
+  heure_debut_reelle: string | null;
+  heure_debut_declaree_le: string | null;
+  heure_debut_declaree_par: string | null;
+  heure_debut_statut: StatutHoraireDeclareType | null;
+  motif_contestation_debut: string | null;
+  heure_fin_reelle: string | null;
+  heure_fin_declaree_le: string | null;
+  heure_fin_declaree_par: string | null;
+  heure_fin_statut: StatutHoraireDeclareType | null;
+  motif_contestation_fin: string | null;
+  tarif_final: number | null;
 };
 
 export type OffresRow = {
@@ -333,6 +347,13 @@ export type PaiementsRow = {
   date_deblocage: string | null;
   created_at: string;
   updated_at: string;
+  // Complément pour heures supplémentaires (migration 0060) — voir
+  // actions/paiement-complement.ts. `complement_paye` par défaut à
+  // true : aucun complément en attente pour l'immense majorité des
+  // missions, jamais bloquant tant qu'aucun n'est devenu nécessaire.
+  complement_montant_du: number | null;
+  complement_paye: boolean;
+  complement_stripe_payment_intent_id: string | null;
 };
 
 export type UserRolesRow = {
@@ -599,7 +620,25 @@ export type Database = {
       };
       mission_lignes: {
         Row: MissionLignesRow;
-        Insert: Omit<MissionLignesRow, "id" | "created_at" | "updated_at" | "statut_acceptation" | "refus_automatique"> &
+        Insert: Omit<
+          MissionLignesRow,
+          | "id"
+          | "created_at"
+          | "updated_at"
+          | "statut_acceptation"
+          | "refus_automatique"
+          | "heure_debut_reelle"
+          | "heure_debut_declaree_le"
+          | "heure_debut_declaree_par"
+          | "heure_debut_statut"
+          | "motif_contestation_debut"
+          | "heure_fin_reelle"
+          | "heure_fin_declaree_le"
+          | "heure_fin_declaree_par"
+          | "heure_fin_statut"
+          | "motif_contestation_fin"
+          | "tarif_final"
+        > &
           Partial<Pick<MissionLignesRow, "id" | "statut_acceptation" | "refus_automatique">>;
         Update: Partial<MissionLignesRow>;
         Relationships: [];
@@ -649,7 +688,10 @@ export type Database = {
       };
       paiements: {
         Row: PaiementsRow;
-        Insert: Omit<PaiementsRow, "id" | "created_at" | "updated_at" | "statut" | "date_deblocage"> &
+        Insert: Omit<
+          PaiementsRow,
+          "id" | "created_at" | "updated_at" | "statut" | "date_deblocage" | "complement_montant_du" | "complement_paye" | "complement_stripe_payment_intent_id"
+        > &
           Partial<Pick<PaiementsRow, "id" | "statut" | "date_deblocage">>;
         Update: Partial<PaiementsRow>;
         Relationships: [];
@@ -722,6 +764,12 @@ export type Database = {
     };
     Views: {
       prestataires_publics: {
+        Row: PrestatairesPublicsRow;
+        Relationships: [];
+      };
+      // Vue jumelle sans l'exigence statut_verification = 'valide' —
+      // voir migration 0061. Colonnes identiques à prestataires_publics.
+      prestataires_publics_test_sans_validation: {
         Row: PrestatairesPublicsRow;
         Relationships: [];
       };

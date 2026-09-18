@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { PrestataireWizard } from "@/components/onboarding/prestataire/wizard";
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function InscriptionPrestatairePage() {
-  return <PrestataireWizard />;
+  return (
+    <Suspense>
+      <PrestataireWizard />
+    </Suspense>
+  );
 }

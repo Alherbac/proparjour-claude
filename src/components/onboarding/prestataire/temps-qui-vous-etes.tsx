@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { GoogleButton } from "@/components/onboarding/recruteur/google-button";
 import { Field, inputClasses } from "@/components/onboarding/prestataire/field";
 import type { PrestataireFormValues } from "@/components/onboarding/prestataire/schema";
@@ -34,6 +35,7 @@ export function TempsQuiVousEtes({
   const fileRef = useRef<HTMLInputElement>(null);
   const score = scorePass(values.motDePasse);
   const hasPhoto = Boolean(photoPreviewUrl);
+  const [motDePasseVisible, setMotDePasseVisible] = useState(false);
 
   return (
     <div className="grid gap-5">
@@ -63,6 +65,7 @@ export function TempsQuiVousEtes({
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         <Field label="Prénom">
           <input
+            id="prenom"
             value={values.prenom}
             onChange={(e) => setField("prenom", e.target.value)}
             placeholder="Camille"
@@ -71,6 +74,7 @@ export function TempsQuiVousEtes({
         </Field>
         <Field label="Nom">
           <input
+            id="nom"
             value={values.nom}
             onChange={(e) => setField("nom", e.target.value)}
             placeholder="Renard"
@@ -81,6 +85,7 @@ export function TempsQuiVousEtes({
 
       <Field label="Adresse e-mail">
         <input
+          id="email"
           type="email"
           value={values.email}
           disabled={existingUser}
@@ -92,13 +97,24 @@ export function TempsQuiVousEtes({
 
       {!existingUser && (
         <Field label="Mot de passe">
-          <input
-            type="password"
-            value={values.motDePasse}
-            onChange={(e) => setField("motDePasse", e.target.value)}
-            placeholder="8 caractères, une majuscule, un chiffre"
-            className={inputClasses(bad.has("motDePasse"))}
-          />
+          <div className="relative">
+            <input
+              id="motDePasse"
+              type={motDePasseVisible ? "text" : "password"}
+              value={values.motDePasse}
+              onChange={(e) => setField("motDePasse", e.target.value)}
+              placeholder="8 caractères, une majuscule, un chiffre"
+              className={`${inputClasses(bad.has("motDePasse"))} pr-11`}
+            />
+            <button
+              type="button"
+              onClick={() => setMotDePasseVisible((v) => !v)}
+              aria-label={motDePasseVisible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+              className="absolute top-1/2 right-3 -translate-y-1/2 text-[#98938B] transition-colors hover:text-[#1A1917]"
+            >
+              {motDePasseVisible ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
+            </button>
+          </div>
           <span className="mt-[3px] flex gap-[5px]">
             {[0, 1, 2, 3].map((i) => (
               <span
@@ -116,6 +132,7 @@ export function TempsQuiVousEtes({
         badge="jamais public"
       >
         <input
+          id="telephone"
           type="tel"
           value={values.telephone}
           onChange={(e) => setField("telephone", e.target.value)}
@@ -141,6 +158,7 @@ export function TempsQuiVousEtes({
           }}
         />
         <button
+          id="photo"
           type="button"
           onClick={() => fileRef.current?.click()}
           className={`flex w-full flex-wrap items-center gap-4 rounded-[15px] border p-4 text-left transition-colors ${

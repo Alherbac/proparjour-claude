@@ -100,6 +100,13 @@ export async function completerProfilPrestataire(
       tarif_montant: data.tarifMontant,
       disponibilites: data.disponibilites,
       visible: data.visible,
+      // SKIP_KYC_VALIDATION n'est défini que sur l'environnement de test
+      // (jamais en production) — permet d'y exercer tout le parcours
+      // (recherche, proposition, candidature) sans validation manuelle
+      // par un admin. Absent/faux partout ailleurs : la colonne garde
+      // alors son défaut `en_attente`, la vraie vérification KYC reste
+      // requise (voir lib/admin/kyc.ts, validerDossier).
+      ...(process.env.SKIP_KYC_VALIDATION === "true" ? { statut_verification: "valide" as const } : {}),
     })
     .select("id")
     .single();

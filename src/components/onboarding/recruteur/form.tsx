@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
-import { Loader2, MailCheck } from "lucide-react";
+import { Loader2, MailCheck, Eye, EyeOff } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,7 @@ import { createClient } from "@/lib/supabase/client";
 import { signInWithGoogle } from "@/lib/supabase/auth-helpers";
 import { cheminInterneOuNull } from "@/lib/redirection";
 import { completerProfilRecruteur } from "@/app/actions/inscription";
+import { sauvegarderBrouillonRecruteur, lireBrouillonRecruteur, effacerBrouillonRecruteur } from "@/lib/inscription-recruteur-draft";
 
 const INSCRIPTION_PATH = "/inscription/recruteur";
 
@@ -59,6 +60,7 @@ export function RecruteurForm() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [existingUser, setExistingUser] = useState<User | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [motDePasseVisible, setMotDePasseVisible] = useState(false);
 
   const {
     register,
@@ -76,13 +78,33 @@ export function RecruteurForm() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
       if (data.user) {
         setExistingUser(data.user);
         setValue("email", data.user.email ?? "");
+
+        // Reprise après confirmation d'e-mail (bug audit staging) :
+        // le profil recruteur n'a pas pu être complété juste après
+        // signUp (voir onSubmit) si la session n'existait pas encore
+        // à ce moment-là. On la termine ici avec le brouillon
+        // sauvegardé, sans redemander le formulaire — seulement si le
+        // profil n'est pas déjà complété par ailleurs (jamais de
+        // double écriture dans `entreprises`).
+        const { data: profil } = await supabase.from("users").select("type").eq("id", data.user.id).maybeSingle();
+        const brouillon = !profil?.type && data.user.email ? lireBrouillonRecruteur(data.user.email) : null;
+        if (brouillon) {
+          const resultat = await completerProfilRecruteur(brouillon.valeurs);
+          if (resultat.success) {
+            effacerBrouillonRecruteur();
+            setCheckingSession(false);
+            router.replace(brouillon.next ?? next ?? "/client");
+            return;
+          }
+        }
       }
       setCheckingSession(false);
-    });
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
@@ -119,10 +141,37 @@ export function RecruteurForm() {
     setSubmitting(true);
     try {
       if (!existingUser) {
+        // Sauvegardé AVANT l'appel signUp (jamais le mot de passe) :
+        // si la confirmation d'e-mail est requise, signUp ne renvoie
+        // aucune session et complèterProfilRecruteur ci-dessous ne
+        // s'exécute pas — ce brouillon permet de terminer
+        // automatiquement l'inscription une fois le compte confirmé
+        // (voir src/app/auth/confirm/page.tsx et l'effet de montage
+        // ci-dessous). Bug audit staging.
+        sauvegarderBrouillonRecruteur({
+          email: data.email,
+          next,
+          valeurs: {
+            typeCompte: data.typeCompte,
+            prenom: data.prenom,
+            nom: data.nom,
+            email: data.email,
+            telephone: data.telephone,
+            ville: data.ville,
+            raisonSociale: data.raisonSociale,
+            siret: data.siret,
+            secteurActivite: data.secteurActivite,
+            accepteCgu: data.accepteCgu,
+          },
+        });
+
         const supabase = createClient();
         const { data: signUpData, error } = await supabase.auth.signUp({
           email: data.email,
           password: data.motDePasse!,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/confirm${next ? `?next=${encodeURIComponent(next)}` : ""}`,
+          },
         });
         if (error) {
           setAuthError(error.message);
@@ -139,6 +188,7 @@ export function RecruteurForm() {
         setAuthError(result.error);
         return;
       }
+      effacerBrouillonRecruteur();
       // Un besoin en cours (localStorage, lib/besoin.ts) attend son
       // auteur exactement là où il l'a laissé — jamais l'écran de
       // bienvenue générique dans ce cas précis (règle UX : l'inscription
@@ -336,7 +386,22 @@ export function RecruteurForm() {
                   htmlFor="motDePasse"
                   error={errors.motDePasse?.message}
                 >
-                  <Input id="motDePasse" type="password" {...register("motDePasse")} />
+                  <div className="relative">
+                    <Input
+                      id="motDePasse"
+                      type={motDePasseVisible ? "text" : "password"}
+                      className="pr-9"
+                      {...register("motDePasse")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setMotDePasseVisible((v) => !v)}
+                      aria-label={motDePasseVisible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                      className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {motDePasseVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
                 </FormField>
               )}
             </div>

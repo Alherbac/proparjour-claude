@@ -52,7 +52,7 @@ export function TempsCeQueVousFaites({
         </p>
       </div>
 
-      <div className="grid gap-2">
+      <div id="metier" className="grid gap-2">
         <span className="text-[12px] font-semibold tracking-[0.05em] text-[#6B6660] uppercase">Votre secteur</span>
         {METIERS.map((m) => {
           const on = values.metier === m.id;
@@ -83,6 +83,7 @@ export function TempsCeQueVousFaites({
         <div className="grid gap-5" style={{ animation: "ppj-act-in 220ms cubic-bezier(.2,.8,.2,1) both" }}>
           <Field label="Votre intitulé de poste" hint="C'est la première ligne que les entreprises lisent sur votre fiche.">
             <input
+              id="titre"
               value={values.titre}
               onChange={(e) => setField("titre", e.target.value)}
               placeholder={TITRE_EXEMPLES[values.metier]}
@@ -90,7 +91,7 @@ export function TempsCeQueVousFaites({
             />
           </Field>
 
-          <div className="grid gap-2.5">
+          <div id="specialites" className="grid gap-2.5">
             <span className="flex flex-wrap items-baseline gap-2.5">
               <span className="text-[12px] font-semibold tracking-[0.05em] text-[#6B6660] uppercase">Vos spécialités</span>
               <span className={`text-[12.5px] font-semibold ${specCount === 0 ? "text-[#98938B]" : "text-[#2A8355]"}`}>
@@ -122,6 +123,7 @@ export function TempsCeQueVousFaites({
             <Field label="Votre tarif horaire" hint="Vous pourrez l'ajuster à tout moment depuis votre tableau de bord.">
               <div className="relative">
                 <input
+                  id="tarifMontant"
                   type="number"
                   min={0}
                   step="0.5"

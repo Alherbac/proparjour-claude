@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { Loader2, MailCheck } from "lucide-react";
+import { cheminInterneOuNull } from "@/lib/redirection";
 import { Logo } from "@/components/layout/logo";
 import { ActsNav, type TempsNav } from "@/components/onboarding/prestataire/acts-nav";
 import { TempsQuiVousEtes } from "@/components/onboarding/prestataire/temps-qui-vous-etes";
@@ -46,6 +48,13 @@ export function PrestataireWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  // Reprise silencieuse après confirmation d'e-mail (voir hydrater()
+  // ci-dessous) — distinct de `submitting` : masque tout le formulaire
+  // pendant la tentative, jamais un simple spinner sur un bouton.
+  const [reprise, setReprise] = useState(false);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     // Un seul flux async : le brouillon local est appliqué après le
@@ -67,18 +76,99 @@ export function PrestataireWizard() {
       const supabase = createClient();
       const { data } = await supabase.auth.getUser();
       if (annule) return;
-      setValues((prev) => ({
-        ...prev,
+
+      const merged: PrestataireFormValues = {
+        ...PRESTATAIRE_DEFAULT_VALUES,
         ...brouillon,
         ...(data.user ? { email: data.user.email ?? "" } : {}),
-      }));
+      };
+      setValues(merged);
       if (data.user) setExistingUser(data.user);
-      setHydrated(true);
+
+      // Reprise après confirmation d'e-mail (bug staging : signUp()
+      // n'a pas de session avant confirmation, donc completerProfilPrestataire
+      // n'a jamais pu être appelée à la première tentative — voir
+      // submit() ci-dessous, `if (!signUpData.session) { ...; return; }`.
+      // Au retour, une session existe : on tente de terminer
+      // l'inscription silencieusement, SANS repasser par le formulaire,
+      // plutôt que de compter sur l'utilisateur pour recliquer sur
+      // "Publier ma fiche" (ce qu'il perçoit comme "je retombe sur le
+      // formulaire d'inscription").
+      if (data.user) {
+        setReprise(true);
+        const { data: profilExistant } = await supabase
+          .from("prestataires_profils")
+          .select("id")
+          .eq("user_id", data.user.id)
+          .maybeSingle();
+        if (annule) return;
+
+        if (profilExistant) {
+          // Profil déjà créé (ex. lien de confirmation ouvert deux fois,
+          // ou retour direct sur cette page une fois inscrit) — jamais
+          // une seconde insertion, simple redirection vers l'espace.
+          const next = cheminInterneOuNull(searchParams.get("next")) ?? "/prestataire";
+          router.replace(next);
+          return;
+        }
+
+        // Complet à l'exception de la photo (un File ne survit jamais
+        // au localStorage — ctx.hasPhoto serait donc toujours faux ici,
+        // ce qui bloquerait `next()`/`submit()` normal sur "il manque
+        // votre portrait" pour un utilisateur qui l'a déjà fournie une
+        // fois, avant signUp) : la photo reste ajoutable ensuite depuis
+        // "Mon compte", comme d'autres champs (voir actions/inscription.ts).
+        const ctxPhotoIgnoree = { existingUser: true, hasPhoto: true };
+        const complet = TEMPS_META.every((t) => missingFor(t.n, merged, ctxPhotoIgnoree).length === 0);
+        if (complet) {
+          const { disponibilites, visible } = disponibiliteVersChamps(merged.disponibilite!);
+          const parsed = prestataireSubmitSchema.safeParse({
+            prenom: merged.prenom.trim(),
+            nom: merged.nom.trim(),
+            email: merged.email.trim(),
+            telephone: merged.telephone.trim(),
+            metier: merged.metier,
+            titre: merged.titre.trim(),
+            specialites: merged.specialites,
+            tarifMontant: Number(merged.tarifMontant),
+            anneesExperience: merged.anneesExperience.trim() ? Number(merged.anneesExperience) : null,
+            ville: merged.ville.trim(),
+            zonesDeplacement: merged.zonesDeplacement,
+            disponibilites,
+            visible,
+            accepteCgu: merged.accepteCgu,
+          });
+          if (parsed.success) {
+            const result = await completerProfilPrestataire(parsed.data);
+            if (!annule && result.success) {
+              window.localStorage.removeItem(STORAGE_KEY);
+              const next = cheminInterneOuNull(searchParams.get("next")) ?? "/prestataire";
+              router.replace(next);
+              return;
+            }
+            // Échec (ex. données invalidées entre-temps) : on retombe
+            // sur le formulaire normal, avec le message d'erreur — pas
+            // de boucle silencieuse.
+            if (!annule && !result.success) setAuthError(result.error);
+          }
+        } else {
+          // Incomplet même sans compter la photo : reprendre au premier
+          // temps réellement à finir plutôt que de renvoyer au temps 1
+          // si 2 et 3 sont déjà remplis.
+          setAct(premierTempsIncomplet(1, merged, { existingUser: true, hasPhoto: false }));
+        }
+      }
+
+      if (!annule) {
+        setReprise(false);
+        setHydrated(true);
+      }
     }
     hydrater();
     return () => {
       annule = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne doit s'exécuter qu'au montage ; router/searchParams sont stables pour cet usage
   }, []);
 
   useEffect(() => {
@@ -86,14 +176,68 @@ export function PrestataireWizard() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
   }, [values, hydrated]);
 
+  // Parcours fluide : dès qu'un champ manquant est signalé (bandeau
+  // de relance), on amène directement l'utilisateur dessus — jamais
+  // besoin de repérer soi-même le champ encadré en rouge.
+  useEffect(() => {
+    if (!nudge || nudge.length === 0) return;
+    const el = document.getElementById(nudge[0].key);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el instanceof HTMLInputElement || el instanceof HTMLButtonElement || el instanceof HTMLTextAreaElement) {
+      el.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'à une nouvelle relance, pas à chaque frappe
+  }, [nudgeKey]);
+
   const ctx = useMemo(() => ({ existingUser: Boolean(existingUser), hasPhoto: Boolean(photoPreviewUrl) }), [existingUser, photoPreviewUrl]);
 
   const tempsNav: TempsNav[] = TEMPS_META.map((t) => ({ ...t, manquants: missingFor(t.n, values, ctx).length }));
 
   const bad = useMemo(() => new Set((nudge ?? []).map((m) => m.key)), [nudge]);
 
+  // Le premier temps encore incomplet à partir de `depart` — jamais
+  // au-delà de 3. Permet d'enchaîner directement plusieurs temps déjà
+  // remplis (ex. reprise après confirmation d'e-mail : le brouillon
+  // local restaure les temps 2 et 3, déjà validés avant l'inscription ;
+  // seule la photo — jamais persistée, un File ne survit pas au
+  // localStorage — peut manquer au temps 1. La rajouter suffit alors à
+  // atteindre directement le temps 3, prêt à publier.
+  function premierTempsIncomplet(depart: 1 | 2 | 3, vals: PrestataireFormValues, c: { existingUser: boolean; hasPhoto: boolean }): 1 | 2 | 3 {
+    let a = depart;
+    while (a < 3 && missingFor(a, vals, c).length === 0) {
+      a = (a + 1) as 1 | 2 | 3;
+    }
+    return a;
+  }
+
+  // Parcours fluide : dès que le dernier champ manquant du temps
+  // courant vient d'être rempli, on avance seul (pas besoin de cliquer
+  // "Continuer") — uniquement sur cette transition précise
+  // (incomplet → complet), jamais en réaction à un simple changement
+  // de temps, pour ne pas re-avancer tout seul quand l'utilisateur
+  // clique "Revenir" sur un temps déjà complet pour le relire.
+  function avancerSiComplet(
+    prevValues: PrestataireFormValues,
+    prevCtx: { existingUser: boolean; hasPhoto: boolean },
+    nextValues: PrestataireFormValues,
+    nextCtx: { existingUser: boolean; hasPhoto: boolean },
+  ) {
+    if (act >= 3) return;
+    const etaitIncomplet = missingFor(act as 1 | 2, prevValues, prevCtx).length > 0;
+    const estComplet = missingFor(act as 1 | 2, nextValues, nextCtx).length === 0;
+    if (etaitIncomplet && estComplet) {
+      const cible = premierTempsIncomplet(((act as 1 | 2) + 1) as 1 | 2 | 3, nextValues, nextCtx);
+      window.setTimeout(() => setAct(cible), 450);
+    }
+  }
+
   function setField<K extends keyof PrestataireFormValues>(key: K, value: PrestataireFormValues[K]) {
-    setValues((prev) => ({ ...prev, [key]: value }));
+    setValues((prev) => {
+      const next = { ...prev, [key]: value };
+      avancerSiComplet(prev, ctx, next, ctx);
+      return next;
+    });
     setNudge(null);
   }
 
@@ -127,6 +271,7 @@ export function PrestataireWizard() {
     setPhotoFile(file);
     setPhotoPreviewUrl(URL.createObjectURL(file));
     setNudge(null);
+    avancerSiComplet(values, ctx, values, { existingUser: ctx.existingUser, hasPhoto: true });
   }
 
   async function submit() {
@@ -138,6 +283,17 @@ export function PrestataireWizard() {
         const { data: signUpData, error } = await supabase.auth.signUp({
           email: values.email.trim(),
           password: values.motDePasse,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/confirm`,
+            // Lu par /auth/confirm (user.user_metadata.role_intent) pour
+            // savoir sur QUEL parcours d'inscription renvoyer une fois
+            // l'e-mail confirmé — sans ça la confirmation renvoyait tout
+            // le monde vers /inscription/recruteur, y compris un
+            // prestataire (bug staging : "Complétez votre profil"
+            // recruteur affiché à la place du tableau de bord
+            // prestataire).
+            data: { role_intent: "prestataire" },
+          },
         });
         if (error) {
           setAuthError(error.message);
@@ -216,6 +372,17 @@ export function PrestataireWizard() {
     submit();
   }
 
+  if (reprise) {
+    return (
+      <PageShell>
+        <div className="mx-auto max-w-md rounded-[20px] border border-[#EAE6E0] bg-white p-8 text-center">
+          <Loader2 className="mx-auto mb-4 size-7 animate-spin text-[#E21D1B]" />
+          <p className="text-[14.5px] text-[#6B6660]">Finalisation de votre inscription…</p>
+        </div>
+      </PageShell>
+    );
+  }
+
   if (act === 4) {
     return (
       <PageShell>
@@ -237,7 +404,7 @@ export function PrestataireWizard() {
             Vérifiez votre e-mail
           </h1>
           <p className="mt-2 text-[13.5px] leading-[1.6] text-[#6B6660]">
-            Cliquez sur le lien reçu par e-mail pour confirmer votre compte, puis reconnectez-vous pour terminer votre inscription.
+            Cliquez sur le lien reçu par e-mail pour confirmer votre compte : votre inscription se termine automatiquement et vous arrivez directement sur votre tableau de bord.
           </p>
         </div>
       </PageShell>
