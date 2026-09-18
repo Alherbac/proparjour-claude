@@ -5,6 +5,7 @@ import { DashButton } from "@/app/prestataire/_components/button";
 import { StatCard } from "@/app/prestataire/_components/stat-card";
 import { getSessionPrestataire, getLignesPrestataire, statutReelPaiement, encaisseDuMois } from "@/app/prestataire/_data";
 import { dateCourteFr, referenceMissionPrestataire } from "@/app/prestataire/_lib";
+import { repartitionLigne } from "@/lib/facturation";
 
 export const metadata: Metadata = { title: "Revenus — ProParJour" };
 
@@ -24,9 +25,11 @@ export default async function PageRevenus() {
     .sort((a, b) => b.mission.date_mission.localeCompare(a.mission.date_mission));
 
   const encaisse = encaisseDuMois(lignes);
-  const enAttente = avecPaiement.filter((l) => statutReelPaiement(l) !== "verse").reduce((s, l) => s + l.tarif_applique, 0);
+  const enAttente = avecPaiement
+    .filter((l) => statutReelPaiement(l) !== "verse")
+    .reduce((s, l) => s + repartitionLigne(l, l.paiement!.tauxCommission).netPrestataire, 0);
   const affichees = avecPaiement.slice(0, 20);
-  const totalAffiche = affichees.reduce((s, l) => s + l.tarif_applique, 0);
+  const totalAffiche = affichees.reduce((s, l) => s + repartitionLigne(l, l.paiement!.tauxCommission).netPrestataire, 0);
 
   return (
     <div className="space-y-5">
@@ -35,16 +38,17 @@ export default async function PageRevenus() {
           Revenus
         </h1>
         {/*
-          Dossier design §5 : "Brut X € · commission Y €" par ligne.
-          La table `paiements` n'a volontairement aucune policy SELECT
-          pour un prestataire (seul le recruteur voit le détail
-          financier d'une mission — confidentialité commerciale, même
-          contrainte déjà rencontrée et respectée plus tôt sur ce
-          projet). Le montant net réellement versé est affiché à la
-          place — signalé ici plutôt qu'inventé ou contourné via le
-          client admin (§10.4).
+          Corrigé (validation produit 2026-09-17) : cette page affichait
+          `tarif_applique` — le montant BRUT de la ligne, ce que paie le
+          client pour cette prestation — en le libellant "net", ce qui
+          ne l'était pas (la commission n'était jamais soustraite). Le
+          taux de commission (jamais le montant total de la mission,
+          qui resterait confidentiel — voir getLignesPrestataire,
+          prestataire/_data.ts) est maintenant relu pour calculer le
+          vrai net via repartitionLigne (lib/facturation.ts), seule
+          source de calcul, la même que la facture prestataire.
         */}
-        <p className="mt-1 text-[13.5px] text-[#6B6660]">Vos versements, mission par mission. Le montant est celui qui vous est réellement versé, après commission.</p>
+        <p className="mt-1 text-[13.5px] text-[#6B6660]">Vos versements, mission par mission. Le montant net est celui qui vous est réellement versé, après commission ProParJour.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -60,6 +64,7 @@ export default async function PageRevenus() {
           {affichees.map((l) => {
             const statut = statutReelPaiement(l);
             const info = STATUT_INFO[statut];
+            const { totalClient, commission, netPrestataire } = repartitionLigne(l, l.paiement!.tauxCommission);
             return (
               <div key={l.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#EAE6E0] bg-white p-4">
                 <div className="min-w-0">
@@ -68,16 +73,19 @@ export default async function PageRevenus() {
                     <Badge tone={info.tone}>{info.label}</Badge>
                   </div>
                   <p className="mt-0.5 text-[12.5px] text-[#6B6660]">{dateCourteFr(l.mission.date_mission)} · {l.mission.lieu}</p>
+                  <p className="mt-0.5 text-[11.5px]" style={{ color: "#98938B", fontFamily: "var(--font-ibm-plex-mono)" }}>
+                    Mission {totalClient.toFixed(2)} € · Commission {commission.toFixed(2)} €
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <div className="text-right">
                     <p className="text-[16px] text-[#1A1917]" style={{ fontFamily: "var(--font-instrument-serif)" }}>
-                      {l.tarif_applique} € <span className="text-[11px] font-sans" style={{ color: "#98938B" }}>net</span>
+                      {netPrestataire.toFixed(2)} € <span className="text-[11px] font-sans" style={{ color: "#98938B" }}>net</span>
                     </p>
                     <p className="text-[11px] text-[#98938B]">{statut === "verse" ? "versé" : statut === "debloque" ? "virement à venir" : "après mission"}</p>
                   </div>
                   {statut === "verse" ? (
-                    <Link href={`/api/factures/${l.mission_id}`}>
+                    <Link href={`/api/factures/${l.mission_id}/prestataire`}>
                       <DashButton variant="secondaire">Facture</DashButton>
                     </Link>
                   ) : (

@@ -88,11 +88,12 @@ export default async function DetailOffrePage({ params }: { params: Promise<{ id
         offreId={offre.id}
         statutInitial={statutCandidature}
         postulable={offre.statut === "publiee"}
-        raisonBlocage={
-          profil.statut_verification !== "valide"
-            ? "Votre profil doit être vérifié par l'équipe ProParJour avant de pouvoir candidater."
-            : undefined
-        }
+        // Blocage sur profil non vérifié désactivé temporairement
+        // (période de préparation, voir actions/offres.ts::postulerOffre)
+        // — remettre `profil.statut_verification !== "valide" ? "..." :
+        // undefined` dès que la vérification des profils est
+        // opérationnelle.
+        raisonBlocage={undefined}
       />
     </div>
   );

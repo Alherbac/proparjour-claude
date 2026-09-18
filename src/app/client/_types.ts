@@ -37,7 +37,7 @@ export type SessionClient = {
 export type MissionAvecEquipe = MissionsRow & {
   lignes: (MissionLignesRow & { prenom: string | null; nom: string | null })[];
   paiement: Pick<PaiementsRow, "statut" | "montant"> | null;
-  dernierMessageType: "texte" | "systeme" | "devis" | null;
+  dernierMessageType: "texte" | "systeme" | "devis" | "execution" | null;
 };
 
 const STATUTS_EN_COURS: MissionStatutType[] = ["confirmee", "en_cours"];
@@ -105,6 +105,6 @@ export type ConversationClient = {
   missionStatut: MissionStatutType;
   dernierMessage: string | null;
   dernierMessageAt: string | null;
-  dernierMessageType: "texte" | "systeme" | "devis" | null;
+  dernierMessageType: "texte" | "systeme" | "devis" | "execution" | null;
   nonLus: number;
 };

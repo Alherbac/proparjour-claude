@@ -87,25 +87,34 @@ export const getLignesPrestataire = cache(async (profilId: string): Promise<Lign
     supabase.from("missions").select("*").in("id", missionIds),
     // La table `paiements` n'a pas de policy SELECT pour un
     // prestataire (confidentialité : seul le recruteur voit le
-    // montant/la commission) — on relit uniquement le statut, via le
-    // client admin, jamais le montant ni la commission.
-    admin.from("paiements").select("mission_id, statut").in("mission_id", missionIds),
+    // montant TOTAL de la mission, qui peut porter plusieurs
+    // prestataires) — on relit le statut et le taux de commission,
+    // jamais `montant`/`montant_commission` (des totaux mission,
+    // potentiellement partagés entre plusieurs prestataires). Le taux
+    // seul permet de calculer le "brut / commission / net" de SA
+    // PROPRE ligne (repartitionLigne, lib/facturation.ts) sans rien
+    // révéler du montant global ni de ce que gagnent d'autres
+    // prestataires sur la même mission.
+    admin.from("paiements").select("mission_id, statut, taux_commission").in("mission_id", missionIds),
     admin.from("versements_prestataires").select("mission_ligne_id, verse_le").in("mission_ligne_id", lignes.map((l) => l.id)),
   ]);
 
   const missionParId = new Map((missions ?? []).map((m) => [m.id, m]));
-  const paiementParMission = new Map((paiements ?? []).map((p) => [p.mission_id, p.statut]));
+  const paiementParMission = new Map((paiements ?? []).map((p) => [p.mission_id, p]));
   const verseLeParLigne = new Map((versements ?? []).map((v) => [v.mission_ligne_id, v.verse_le]));
 
   return lignes
     .filter((l) => missionParId.has(l.mission_id))
-    .map((l) => ({
-      ...l,
-      mission: missionParId.get(l.mission_id)!,
-      paiement: paiementParMission.has(l.mission_id)
-        ? { statut: paiementParMission.get(l.mission_id)!, verseLe: verseLeParLigne.get(l.id) ?? null }
-        : null,
-    }));
+    .map((l) => {
+      const paiement = paiementParMission.get(l.mission_id);
+      return {
+        ...l,
+        mission: missionParId.get(l.mission_id)!,
+        paiement: paiement
+          ? { statut: paiement.statut, verseLe: verseLeParLigne.get(l.id) ?? null, tauxCommission: paiement.taux_commission }
+          : null,
+      };
+    });
 });
 
 export const getProfilComplet = cache(async (userId: string) => {

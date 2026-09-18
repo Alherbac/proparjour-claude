@@ -102,7 +102,7 @@ export const getMissionsClient = cache(async (userId: string): Promise<MissionAv
     }),
   );
   const paiementParMission = new Map((paiements ?? []).map((p) => [p.mission_id, p]));
-  const dernierMessageParMission = new Map<string, "texte" | "systeme" | "devis">();
+  const dernierMessageParMission = new Map<string, "texte" | "systeme" | "devis" | "execution">();
   for (const m of derniersMessages ?? []) {
     if (!dernierMessageParMission.has(m.mission_id)) dernierMessageParMission.set(m.mission_id, m.type);
   }
