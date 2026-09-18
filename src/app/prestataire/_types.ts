@@ -9,6 +9,7 @@ import type {
   PaiementStatutType,
   MetierType,
 } from "@/lib/supabase/database.types";
+import { repartitionLigne } from "@/lib/facturation";
 
 /**
  * Types et fonctions PURES de la couche de données /prestataire —
@@ -38,7 +39,7 @@ export type SessionPrestataire = {
 
 export type LigneAvecMission = MissionLignesRow & {
   mission: MissionsRow;
-  paiement: { statut: PaiementStatutType; verseLe: string | null } | null;
+  paiement: { statut: PaiementStatutType; verseLe: string | null; tauxCommission: number } | null;
 };
 
 export function classerLigne(l: LigneAvecMission): "a_repondre" | "confirmee" | "realisee" | "autre" {
@@ -64,7 +65,7 @@ export function encaisseDuMois(lignes: LigneAvecMission[]): number {
   const debutIso = debutMois.toISOString().slice(0, 10);
   return lignes
     .filter((l) => statutReelPaiement(l) === "verse" && l.paiement?.verseLe && l.paiement.verseLe >= debutIso)
-    .reduce((s, l) => s + l.tarif_applique, 0);
+    .reduce((s, l) => s + repartitionLigne(l, l.paiement!.tauxCommission).netPrestataire, 0);
 }
 
 /**
@@ -118,6 +119,6 @@ export type ConversationPrestataire = {
   missionStatut: MissionStatutType;
   dernierMessage: string | null;
   dernierMessageAt: string | null;
-  dernierMessageType: "texte" | "systeme" | "devis" | null;
+  dernierMessageType: "texte" | "systeme" | "devis" | "execution" | null;
   nonLus: number;
 };
