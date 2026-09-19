@@ -44,7 +44,13 @@ export function CarteOffre({ offre }: { offre: OffreAvecCandidatures }) {
           <Badge tone={BADGE_STATUT_OFFRE[offre.statut].tone}>{BADGE_STATUT_OFFRE[offre.statut].label}</Badge>
         </div>
         <p className="mt-0.5 text-[12.5px] text-[#6B6660]">
-          {referenceMissionClient(offre)} · {LABEL_METIER[offre.metier]} · {dateCourteFr(offre.date_mission)} · {offre.heure_debut.slice(0, 5)}–{offre.heure_fin.slice(0, 5)} · {offre.ville}
+          {/* Mission multi-jours (migration 0062) — repli sur l'unique
+              journée de l'offre quand offres_journees est vide. */}
+          {referenceMissionClient(offre)} · {LABEL_METIER[offre.metier]} ·{" "}
+          {offre.journees.length > 1
+            ? `${offre.journees.length} journées, du ${dateCourteFr(offre.journees[0].date)} au ${dateCourteFr(offre.journees[offre.journees.length - 1].date)}`
+            : `${dateCourteFr(offre.journees[0]?.date ?? offre.date_mission)} · ${offre.journees[0]?.heureDebut ?? offre.heure_debut.slice(0, 5)}–${offre.journees[0]?.heureFin ?? offre.heure_fin.slice(0, 5)}`}{" "}
+          · {offre.ville}
         </p>
         <p className="mt-1 text-[12.5px] text-[#6B6660]">0/1 poste pourvu</p>
       </div>

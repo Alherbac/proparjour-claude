@@ -6,13 +6,15 @@ import { StatCard } from "@/app/prestataire/_components/stat-card";
 import { FilterPill } from "@/app/prestataire/_components/filter-pill";
 import { Badge } from "@/app/prestataire/_components/badge";
 import { DashButton } from "@/app/prestataire/_components/button";
-import { dateCourteFr, correspondDisponibilite, heuresEntre } from "@/app/prestataire/_lib";
+import { dateCourteFr, correspondDisponibilite } from "@/app/prestataire/_lib";
+import { type JourneeMission, montantTotalJournees } from "@/lib/journees";
 import type { OffresRow } from "@/lib/supabase/database.types";
 
 type Filtre = "toutes" | "metier_dispo" | "metier";
 
 export function EcranOpportunites({
   offres,
+  journeesParOffre,
   idsCandidates,
   disponibilitesHebdo,
   exceptions,
@@ -20,6 +22,8 @@ export function EcranOpportunites({
   tauxReponse,
 }: {
   offres: OffresRow[];
+  /** Mission multi-jours (migration 0062) — journées réelles par offre ; repli sur l'unique journée de l'offre quand absent. */
+  journeesParOffre: Map<string, JourneeMission[]>;
   idsCandidates: Set<string>;
   disponibilitesHebdo: string[];
   exceptions: { date: string; disponible: boolean }[];
@@ -66,8 +70,15 @@ export function EcranOpportunites({
       ) : (
         <div className="space-y-2.5">
           {filtrees.map(({ offre, correspond }) => {
-            const heures = heuresEntre(offre.heure_debut, offre.heure_fin);
-            const remuneration = Math.round(heures * offre.tarif_horaire * 100) / 100;
+            // Mission multi-jours (migration 0062) — repli sur l'unique
+            // journée de l'offre quand aucune ligne offres_journees
+            // n'existe encore (ne devrait plus arriver depuis le
+            // backfill de 0062).
+            const journees = journeesParOffre.get(offre.id) ?? [
+              { date: offre.date_mission, heureDebut: offre.heure_debut.slice(0, 5), heureFin: offre.heure_fin.slice(0, 5) },
+            ];
+            const plusieursJournees = journees.length > 1;
+            const remuneration = montantTotalJournees(journees.map((j) => ({ ...j, tarifHoraire: offre.tarif_horaire })));
             const dejaCandidate = idsCandidates.has(offre.id);
             return (
               <div key={offre.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#EAE6E0] bg-white p-4">
@@ -77,7 +88,10 @@ export function EcranOpportunites({
                     <Badge tone={correspond ? "vert" : "gris"}>{correspond ? "Métier + dispo." : "Métier"}</Badge>
                   </div>
                   <p className="mt-0.5 text-[12.5px] text-[#6B6660]">
-                    {dateCourteFr(offre.date_mission)} · {offre.heure_debut.slice(0, 5)} → {offre.heure_fin.slice(0, 5)} · {offre.ville}
+                    {plusieursJournees
+                      ? `${journees.length} journées, du ${dateCourteFr(journees[0].date)} au ${dateCourteFr(journees[journees.length - 1].date)}`
+                      : `${dateCourteFr(journees[0].date)} · ${journees[0].heureDebut} → ${journees[0].heureFin}`}{" "}
+                    · {offre.ville}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">

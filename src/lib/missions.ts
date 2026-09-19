@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { heuresEntre } from "@/lib/duree";
+import { type JourneeMission, dureeTotaleJournees, trierJourneesParDate } from "@/lib/journees";
 import type {
   MissionLignesRow,
   MissionsRow,
@@ -209,6 +210,13 @@ export type DevisPrefillMission = {
   heureFin: string;
   lieu: string;
   tarifHoraire: number;
+  // Mission multi-jours (migration 0062) — journées réelles de cette
+  // ligne (mission_lignes_journees), triées chronologiquement. Absent
+  // seulement si aucune ligne journées n'existe encore pour cette
+  // mission_ligne (ne devrait plus arriver depuis le backfill de
+  // 0062) ; l'appelant retombe alors sur date/heureDebut/heureFin
+  // ci-dessus — jamais une deuxième représentation des journées.
+  journees?: JourneeMission[];
 };
 
 /**
@@ -226,14 +234,29 @@ export async function getDevisPrefillPourMission(missionId: string, userId: stri
     supabase.from("missions").select("description, date_mission, lieu").eq("id", missionId).maybeSingle(),
     supabase
       .from("mission_lignes")
-      .select("heure_debut, heure_fin, tarif_applique")
+      .select("id, heure_debut, heure_fin, tarif_applique")
       .eq("mission_id", missionId)
       .eq("prestataire_id", profil.id)
       .maybeSingle(),
   ]);
   if (!mission || !ligne) return null;
 
-  const duree = heuresEntre(ligne.heure_debut, ligne.heure_fin);
+  // Mission multi-jours (migration 0062) — mission_lignes_journees est
+  // la source de vérité pour le détail par jour ; mission_lignes.
+  // tarif_applique reste leur somme (Phase 2A). Jamais recalculé
+  // depuis date_mission/heure_debut/heure_fin quand les journées
+  // existent déjà.
+  const { data: journeesRows } = await supabase
+    .from("mission_lignes_journees")
+    .select("date, heure_debut, heure_fin")
+    .eq("mission_ligne_id", ligne.id)
+    .order("date", { ascending: true });
+  const journees: JourneeMission[] | undefined =
+    journeesRows && journeesRows.length > 0
+      ? trierJourneesParDate(journeesRows.map((j) => ({ date: j.date, heureDebut: j.heure_debut, heureFin: j.heure_fin })))
+      : undefined;
+
+  const duree = journees ? dureeTotaleJournees(journees) : heuresEntre(ligne.heure_debut, ligne.heure_fin);
   return {
     prestation: mission.description || "Mission proposée",
     date: mission.date_mission,
@@ -241,6 +264,7 @@ export async function getDevisPrefillPourMission(missionId: string, userId: stri
     heureFin: ligne.heure_fin,
     lieu: mission.lieu,
     tarifHoraire: duree > 0 ? Math.round((ligne.tarif_applique / duree) * 100) / 100 : ligne.tarif_applique,
+    journees,
   };
 }
 

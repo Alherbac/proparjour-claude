@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { creerClientSession, creerClientAdmin } from "@/app/client/_supabase";
 import type { SessionClient, MissionAvecEquipe, OffreAvecCandidatures, ConversationClient } from "@/app/client/_types";
+import type { JourneeMission } from "@/lib/journees";
 
 /**
  * Couche de données propre à /client — Règle N°0 : écrite de zéro,
@@ -127,6 +128,20 @@ export const getOffresAvecCandidatures = cache(async (userId: string): Promise<O
 
   const offreIds = offres.map((o) => o.id);
   const { data: candidatures } = await supabase.from("candidatures").select("*").in("offre_id", offreIds).order("created_at", { ascending: false });
+  // Mission multi-jours (migration 0062) — journées réelles par offre,
+  // regroupées par offre_id ; repli sur l'unique journée de l'offre
+  // dans CarteOffre quand une offre n'a pas encore de ligne.
+  const { data: journeesRows } = await supabase
+    .from("offres_journees")
+    .select("offre_id, date, heure_debut, heure_fin")
+    .in("offre_id", offreIds)
+    .order("date", { ascending: true });
+  const journeesParOffre = new Map<string, JourneeMission[]>();
+  for (const j of journeesRows ?? []) {
+    const liste = journeesParOffre.get(j.offre_id) ?? [];
+    liste.push({ date: j.date, heureDebut: j.heure_debut.slice(0, 5), heureFin: j.heure_fin.slice(0, 5) });
+    journeesParOffre.set(j.offre_id, liste);
+  }
   const prestataireIds = [...new Set((candidatures ?? []).map((c) => c.prestataire_id))];
   const { data: profils } =
     prestataireIds.length > 0
@@ -146,6 +161,7 @@ export const getOffresAvecCandidatures = cache(async (userId: string): Promise<O
 
   return offres.map((offre) => ({
     ...offre,
+    journees: journeesParOffre.get(offre.id) ?? [],
     candidatures: (candidatures ?? [])
       .filter((c) => c.offre_id === offre.id)
       .map((c) => {

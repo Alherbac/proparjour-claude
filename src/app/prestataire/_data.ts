@@ -3,6 +3,7 @@ import { cache } from "react";
 import { creerClientSession, creerClientAdmin } from "@/app/prestataire/_supabase";
 import type { SessionPrestataire, LigneAvecMission, CandidatureEnvoyee, ConversationPrestataire } from "@/app/prestataire/_types";
 import type { MetierType } from "@/lib/supabase/database.types";
+import type { JourneeMission } from "@/lib/journees";
 
 /**
  * Couche de données propre à /prestataire — Règle N°0 : écrite de
@@ -147,10 +148,24 @@ export const getCandidaturesEnvoyees = cache(async (profilId: string): Promise<C
   // lib/missions.ts (lu, jamais importé).
   const admin = creerClientAdmin();
   const offreIds = [...new Set(candidatures.map((c) => c.offre_id))];
-  const { data: offres } = await admin.from("offres").select("*").in("id", offreIds);
+  const [{ data: offres }, { data: journeesRows }] = await Promise.all([
+    admin.from("offres").select("*").in("id", offreIds),
+    // Mission multi-jours (migration 0062) — journées réelles par
+    // offre, regroupées par offre_id ; repli sur l'unique journée de
+    // l'offre côté appelant quand une offre n'a pas encore de ligne.
+    admin.from("offres_journees").select("offre_id, date, heure_debut, heure_fin").in("offre_id", offreIds).order("date", { ascending: true }),
+  ]);
   const offreParId = new Map((offres ?? []).map((o) => [o.id, o]));
+  const journeesParOffre = new Map<string, JourneeMission[]>();
+  for (const j of journeesRows ?? []) {
+    const liste = journeesParOffre.get(j.offre_id) ?? [];
+    liste.push({ date: j.date, heureDebut: j.heure_debut.slice(0, 5), heureFin: j.heure_fin.slice(0, 5) });
+    journeesParOffre.set(j.offre_id, liste);
+  }
 
-  return candidatures.filter((c) => offreParId.has(c.offre_id)).map((c) => ({ ...c, offre: offreParId.get(c.offre_id)! }));
+  return candidatures
+    .filter((c) => offreParId.has(c.offre_id))
+    .map((c) => ({ ...c, offre: offreParId.get(c.offre_id)!, journees: journeesParOffre.get(c.offre_id) ?? [] }));
 });
 
 /** Documents refusés — seul signal réellement disponible pour bloquer un profil (aucune date d'expiration dans le schéma réel, voir §10.4 dans le rapport final). */

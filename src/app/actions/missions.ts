@@ -17,6 +17,7 @@ import {
 } from "@/lib/missions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import type { JourneeMission } from "@/lib/journees";
 import { traduireErreurDb } from "@/lib/erreurs-db";
 import { envoyerEmailMissionConfirmee, envoyerEmailPaiementDebloque } from "@/lib/email";
 
@@ -191,7 +192,17 @@ export async function repondreMissionLigne(
 export async function envoyerDevis(
   missionId: string,
   destinataireId: string,
-  devis: { prestation: string; date: string; heureDebut: string; heureFin: string; lieu: string; tarifHoraire: number; montantTotal: number },
+  devis: {
+    prestation: string;
+    date: string;
+    heureDebut: string;
+    heureFin: string;
+    lieu: string;
+    tarifHoraire: number;
+    montantTotal: number;
+    /** Mission multi-jours (migration 0062) — voir DevisPayload (lib/messages.ts). */
+    journees?: JourneeMission[];
+  },
 ): Promise<ActionResult> {
   const supabaseServer = await createClient();
   const {

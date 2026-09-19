@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { METIERS, type MetierId } from "@/config/metiers";
 import { postulerOffre } from "@/app/actions/offres";
-import { montantMission } from "@/lib/duree";
+import { type JourneeMission, montantTotalJournees } from "@/lib/journees";
 import { dateCourteFr } from "@/lib/date-fr";
 import { cn } from "@/lib/utils";
 import type { OffresRow } from "@/lib/supabase/database.types";
@@ -31,17 +31,23 @@ function publieeDepuis(iso: string): string {
 
 function OffreCard({
   offre,
+  journees,
   statutCandidature,
   postulable,
 }: {
   offre: OffresRow;
+  /** Mission multi-jours (migration 0062) — journées réelles ; repli sur l'unique journée de l'offre si vide. */
+  journees: JourneeMission[];
   statutCandidature: string | undefined;
   postulable: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [statut, setStatut] = useState(statutCandidature);
   const metier = METIERS.find((m) => m.id === offre.metier);
-  const total = montantMission(offre.heure_debut, offre.heure_fin, offre.tarif_horaire);
+  const journeesEffectives =
+    journees.length > 0 ? journees : [{ date: offre.date_mission, heureDebut: offre.heure_debut.slice(0, 5), heureFin: offre.heure_fin.slice(0, 5) }];
+  const plusieursJournees = journeesEffectives.length > 1;
+  const total = montantTotalJournees(journeesEffectives.map((j) => ({ ...j, tarifHoraire: offre.tarif_horaire })));
 
   function postuler() {
     startTransition(async () => {
@@ -69,7 +75,10 @@ function OffreCard({
       </div>
 
       <p className="text-[13.5px] text-muted-foreground">
-        {metier?.filiere} · {offre.ville} · {dateCourteFr(offre.date_mission)} · {offre.heure_debut.slice(0, 5)}–{offre.heure_fin.slice(0, 5)}
+        {metier?.filiere} · {offre.ville} ·{" "}
+        {plusieursJournees
+          ? `${journeesEffectives.length} journées, du ${dateCourteFr(journeesEffectives[0].date)} au ${dateCourteFr(journeesEffectives[journeesEffectives.length - 1].date)}`
+          : `${dateCourteFr(journeesEffectives[0].date)} · ${journeesEffectives[0].heureDebut}–${journeesEffectives[0].heureFin}`}
       </p>
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -110,6 +119,7 @@ function correspond(offre: OffresRow, recherche: string): boolean {
 
 export function OffresBrowser({
   offres,
+  journeesParOffre = {},
   candidaturesParOffre = {},
   metierDefaut,
   postulable,
@@ -117,6 +127,8 @@ export function OffresBrowser({
   sousTitre,
 }: {
   offres: OffresRow[];
+  /** Mission multi-jours (migration 0062) — journées réelles par offre_id ; repli sur l'unique journée de l'offre quand absente. */
+  journeesParOffre?: Record<string, JourneeMission[]>;
   candidaturesParOffre?: Record<string, string>;
   metierDefaut?: MetierId;
   postulable: boolean;
@@ -196,6 +208,7 @@ export function OffresBrowser({
             <OffreCard
               key={offre.id}
               offre={offre}
+              journees={journeesParOffre[offre.id] ?? []}
               statutCandidature={candidaturesParOffre[offre.id]}
               postulable={postulable}
             />

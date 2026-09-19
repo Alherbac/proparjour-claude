@@ -10,6 +10,7 @@ import type {
   MetierType,
 } from "@/lib/supabase/database.types";
 import { repartitionLigne } from "@/lib/facturation";
+import type { JourneeMission } from "@/lib/journees";
 
 /**
  * Types et fonctions PURES de la couche de données /prestataire —
@@ -80,7 +81,8 @@ export function scoreFiabilite(missionsTerminees: number, nbLitiges: number): nu
   return Math.max(0, Math.round(100 - (nbLitiges / missionsTerminees) * 100));
 }
 
-export type CandidatureEnvoyee = CandidaturesRow & { offre: OffresRow };
+/** `journees` — mission multi-jours (migration 0062) : journées réelles de `offre` (offres_journees), éventuellement vide si non backfillée. */
+export type CandidatureEnvoyee = CandidaturesRow & { offre: OffresRow; journees: JourneeMission[] };
 
 export function tauxReponse(candidatures: CandidatureEnvoyee[]): number | null {
   if (candidatures.length === 0) return null;

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { MetierId } from "@/config/metiers";
 import type { MessagesRow, MessageType } from "@/lib/supabase/database.types";
+import type { JourneeMission } from "@/lib/journees";
 
 export type Conversation = {
   missionId: string;
@@ -67,6 +68,14 @@ export type DevisPayload = {
   // de pouvoir payer.
   statut?: DevisStatut;
   noteAjustement?: string;
+  // Mission multi-jours (migration 0062) — journées réelles de la
+  // mission, triées chronologiquement, réutilisées telles quelles
+  // depuis mission_lignes_journees (jamais une deuxième
+  // représentation). Absent sur les devis envoyés avant ce chantier ou
+  // pour une mission encore mono-jour sans ligne journées — traité
+  // comme le cas N=1 partout où c'est lu (date/heureDebut/heureFin
+  // ci-dessus restent la seule journée dans ce cas).
+  journees?: JourneeMission[];
 };
 
 /**

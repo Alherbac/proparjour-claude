@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getParticipantsMission, getMessagesEntre } from "@/lib/messages";
 import { getStatutPaiementMission, getComplementPaiementMission } from "@/lib/missions";
 import { heuresEntre } from "@/lib/duree";
+import { type JourneeMission, dureeTotaleJournees, trierJourneesParDate } from "@/lib/journees";
 import { METIERS } from "@/config/metiers";
 import { refCourteMission } from "@/lib/mission-ref";
 import { dateCourteFr } from "@/lib/date-fr";
@@ -77,6 +78,12 @@ export default async function MissionDetailPage({
     heure_fin_reelle: string | null;
     heure_fin_statut: string | null;
   } | null = null;
+  // Mission multi-jours (migration 0062) — journées réelles de
+  // maLigne (mission_lignes_journees), triées chronologiquement ;
+  // utilisées ci-dessous pour préremplir le devis. Absent seulement si
+  // aucune ligne journées n'existe encore (ne devrait plus arriver
+  // depuis le backfill de 0062).
+  let maLigneJournees: JourneeMission[] | undefined;
   if (estPrestataire) {
     const { data: profil } = await supabase.from("prestataires_profils").select("id").eq("user_id", user.id).maybeSingle();
     if (profil) {
@@ -87,6 +94,17 @@ export default async function MissionDetailPage({
         .eq("prestataire_id", profil.id)
         .maybeSingle();
       maLigne = ligne ?? null;
+      if (maLigne) {
+        const { data: journeesRows } = await supabase
+          .from("mission_lignes_journees")
+          .select("date, heure_debut, heure_fin")
+          .eq("mission_ligne_id", maLigne.id)
+          .order("date", { ascending: true });
+        maLigneJournees =
+          journeesRows && journeesRows.length > 0
+            ? trierJourneesParDate(journeesRows.map((j) => ({ date: j.date, heureDebut: j.heure_debut, heureFin: j.heure_fin })))
+            : undefined;
+      }
     }
   }
 
@@ -226,7 +244,11 @@ export default async function MissionDetailPage({
   );
 
   // Prérempli pour le formulaire d'envoi de devis (prestataire
-  // uniquement — voir EnvoyerDevisForm, message-thread.tsx).
+  // uniquement — voir EnvoyerDevisForm, message-thread.tsx). Mission
+  // multi-jours (migration 0062) : la durée vient de la somme des
+  // journées quand elles existent (maLigneJournees), jamais recalculée
+  // depuis la seule première journée.
+  const devisPrefillDuree = maLigneJournees ? dureeTotaleJournees(maLigneJournees) : maLigne ? heuresEntre(maLigne.heure_debut, maLigne.heure_fin) : 0;
   const devisPrefill: DevisPrefill | null =
     estPrestataire && maLigne
       ? {
@@ -235,10 +257,8 @@ export default async function MissionDetailPage({
           heureDebut: maLigne.heure_debut,
           heureFin: maLigne.heure_fin,
           lieu: mission.lieu,
-          tarifHoraire:
-            heuresEntre(maLigne.heure_debut, maLigne.heure_fin) > 0
-              ? Math.round((maLigne.tarif_applique / heuresEntre(maLigne.heure_debut, maLigne.heure_fin)) * 100) / 100
-              : maLigne.tarif_applique,
+          tarifHoraire: devisPrefillDuree > 0 ? Math.round((maLigne.tarif_applique / devisPrefillDuree) * 100) / 100 : maLigne.tarif_applique,
+          journees: maLigneJournees,
         }
       : null;
 

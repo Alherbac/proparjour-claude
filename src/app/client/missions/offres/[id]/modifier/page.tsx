@@ -37,6 +37,20 @@ export default async function ModifierOffrePage({ params }: { params: Promise<{ 
     redirect("/client/missions");
   }
 
+  // Mission multi-jours (migration 0062) — offres_journees est la
+  // source de vérité pour le détail par jour ; repli sur l'unique
+  // journée {date_mission, heure_debut, heure_fin} de l'offre si, pour
+  // une raison quelconque, aucune ligne n'existe encore.
+  const { data: journeesRows } = await supabase
+    .from("offres_journees")
+    .select("date, heure_debut, heure_fin")
+    .eq("offre_id", id)
+    .order("date", { ascending: true });
+  const journees =
+    journeesRows && journeesRows.length > 0
+      ? journeesRows.map((j) => ({ date: j.date, heureDebut: j.heure_debut.slice(0, 5), heureFin: j.heure_fin.slice(0, 5) }))
+      : [{ date: offre.date_mission, heureDebut: offre.heure_debut.slice(0, 5), heureFin: offre.heure_fin.slice(0, 5) }];
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <Link href="/client/missions" className="inline-flex items-center gap-1 text-[13px] text-[#6B6660] transition-colors hover:text-[#1A1917]">
@@ -53,7 +67,7 @@ export default async function ModifierOffrePage({ params }: { params: Promise<{ 
         </p>
       </div>
 
-      <FormulaireOffre offre={offre} />
+      <FormulaireOffre offre={offre} journeesInitiales={journees} />
     </div>
   );
 }

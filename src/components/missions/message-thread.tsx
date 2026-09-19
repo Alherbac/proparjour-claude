@@ -19,6 +19,7 @@ import {
 import { creerIntentionPaiementComplement, confirmerPaiementComplement } from "@/app/actions/paiement-complement";
 import { laisserAvis } from "@/app/actions/avis";
 import { heuresEntre, calculerMontantFinal } from "@/lib/duree";
+import { dateCourteFr } from "@/lib/date-fr";
 import { repartitionLigne, type RepartitionLigne } from "@/lib/facturation";
 import { ETAPES, calculerEtapeMission, indiceEtape } from "@/lib/etapes-mission";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 import type { MessagesRow, PaiementStatutType } from "@/lib/supabase/database.types";
 import type { DevisPayload, ExecutionPayload } from "@/lib/messages";
 import type { ComplementPaiement } from "@/lib/missions";
+import { type JourneeMission, dureeTotaleJournees, trierJourneesParDate } from "@/lib/journees";
 import { Star } from "lucide-react";
 
 export type DevisPrefill = {
@@ -37,6 +39,8 @@ export type DevisPrefill = {
   heureFin: string;
   lieu: string;
   tarifHoraire: number;
+  /** Mission multi-jours (migration 0062) — voir DevisPrefillMission (lib/missions.ts) : journées réelles, triées chronologiquement, absentes seulement si aucune ligne journées n'existe encore. */
+  journees?: JourneeMission[];
 };
 
 /** Ligne de mission du contact de ce fil, avec son état d'exécution — voir missions/[id]/page.tsx::versLigneExecution. */
@@ -155,13 +159,20 @@ function EnvoyerDevisForm({
   const [tarifHoraire, setTarifHoraire] = useState(String(prefill.tarifHoraire));
   const [isPending, setIsPending] = useState(false);
 
-  function dureeHeures() {
-    const [h1, m1] = prefill.heureDebut.split(":").map(Number);
-    const [h2, m2] = prefill.heureFin.split(":").map(Number);
-    let minutes = h2 * 60 + m2 - (h1 * 60 + m1);
-    if (minutes <= 0) minutes += 24 * 60;
-    return minutes / 60;
-  }
+  // Mission multi-jours (migration 0062) — repli sur l'unique journée
+  // {date, heureDebut, heureFin} du prérempli quand `journees` est
+  // absent (mission mono-jour, ou ancien format) : cas N=1 du modèle
+  // général. Triées chronologiquement, durée totale calculée via le
+  // moteur partagé (lib/journees.ts) — jamais depuis la seule première
+  // journée, jamais un second calculateur.
+  const journees: JourneeMission[] =
+    prefill.journees && prefill.journees.length > 0
+      ? trierJourneesParDate(prefill.journees)
+      : [{ date: prefill.date, heureDebut: prefill.heureDebut, heureFin: prefill.heureFin }];
+  const plusieursJournees = journees.length > 1;
+  const dureeTotale = dureeTotaleJournees(journees);
+  const dureeAffichee = Math.round(dureeTotale * 10) / 10;
+  const montantTotal = Math.round(Number(tarifHoraire || 0) * dureeTotale * 100) / 100;
 
   async function envoyer() {
     const taux = Number(tarifHoraire);
@@ -170,7 +181,7 @@ function EnvoyerDevisForm({
       return;
     }
     setIsPending(true);
-    const montantTotal = Math.round(taux * dureeHeures() * 100) / 100;
+    const total = Math.round(taux * dureeTotale * 100) / 100;
     const result = await envoyerDevis(missionId, destinataireId, {
       prestation: prefill.prestation,
       date: prefill.date,
@@ -178,7 +189,8 @@ function EnvoyerDevisForm({
       heureFin: prefill.heureFin,
       lieu: prefill.lieu,
       tarifHoraire: taux,
-      montantTotal,
+      montantTotal: total,
+      journees,
     });
     setIsPending(false);
     if (!result.success) {
@@ -205,9 +217,30 @@ function EnvoyerDevisForm({
     <div className="w-full max-w-[420px] rounded-2xl border-[1.5px] border-primary bg-background p-4 shadow-sm">
       <p className="flex items-center gap-2 font-mono text-[10.5px] font-semibold uppercase tracking-wide text-ppj-red-text before:size-[7px] before:shrink-0 before:rounded-full before:bg-primary">Votre devis</p>
       <p className="mt-1.5 font-heading text-base font-semibold text-foreground">{prefill.prestation}</p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {prefill.heureDebut} – {prefill.heureFin} · {prefill.lieu}
-      </p>
+      {plusieursJournees ? (
+        <>
+          <p className="mt-1 text-sm text-muted-foreground">{prefill.lieu}</p>
+          <p className="mt-3 text-xs font-medium text-muted-foreground">Journées de la mission</p>
+          <div className="mt-1.5 divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {journees.map((j, i) => (
+              <div key={i} className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-[13px]">
+                <span className="min-w-0 shrink-0 text-foreground">{dateCourteFr(j.date)}</span>
+                <span className="min-w-0 shrink truncate text-muted-foreground">
+                  {j.heureDebut} → {j.heureFin}
+                </span>
+                <span className="shrink-0 font-medium text-foreground">{Math.round(heuresEntre(j.heureDebut, j.heureFin) * 10) / 10} h</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {journees.length} journées · Total : <span className="font-medium text-foreground">{dureeAffichee} h</span>
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {prefill.heureDebut} – {prefill.heureFin} · {prefill.lieu}
+        </p>
+      )}
       <label className="mt-3 block text-xs font-medium text-muted-foreground">Tarif horaire proposé (€)</label>
       <Input
         type="number"
@@ -218,7 +251,7 @@ function EnvoyerDevisForm({
         className="mt-1"
       />
       <p className="mt-2 text-sm text-muted-foreground">
-        Total pour {dureeHeures()} h : <span className="font-medium text-foreground">{Math.round(Number(tarifHoraire || 0) * dureeHeures() * 100) / 100} €</span>
+        Total pour {dureeAffichee} h : <span className="font-medium text-foreground">{montantTotal} €</span>
       </p>
       <div className="mt-3.5 flex flex-wrap gap-2.5">
         <Button size="xl" className="rounded-xl" onClick={envoyer} disabled={isPending}>

@@ -48,7 +48,10 @@ export function EcranCandidatures({ candidatures }: { candidatures: CandidatureE
                     <Badge tone={TONE_CANDIDATURE[badge] ?? "gris"}>{badge}</Badge>
                   </div>
                   <p className="mt-0.5 text-[12.5px] text-[#6B6660]">
-                    {c.offre.ville} · {dateCourteFr(c.offre.date_mission)}
+                    {/* Mission multi-jours (migration 0062) — repli sur
+                        date_mission si offres_journees est vide. */}
+                    {c.offre.ville} · {dateCourteFr(c.journees[0]?.date ?? c.offre.date_mission)}
+                    {c.journees.length > 1 ? ` (+${c.journees.length - 1})` : ""}
                   </p>
                 </div>
                 <Link href={`/prestataire/opportunites/${c.offre.id}`}>

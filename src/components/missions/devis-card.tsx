@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { creerIntentionPaiementMission, confirmerPaiementMission } from "@/app/actions/paiement-mission";
 import { accepterDevis, demanderAjustementDevis, declinerDevis } from "@/app/actions/missions";
 import { heuresEntre } from "@/lib/duree";
+import { dureeTotaleJournees } from "@/lib/journees";
 import { repartitionLigne } from "@/lib/facturation";
 import { cn } from "@/lib/utils";
 import type { DevisPayload } from "@/lib/messages";
@@ -306,10 +307,15 @@ export function DevisCard({
       <div className="mt-3 grid gap-2 text-[14.5px]">
         <span className="flex items-baseline justify-between gap-3">
           <span className="min-w-0 text-foreground">
-            {devis.prestation} · {devis.heureDebut} → {devis.heureFin}
+            {/* Mission multi-jours (migration 0062) — "N journées" plutôt
+                que les seuls horaires de la première quand il y en a
+                plusieurs ; comportement mono-jour inchangé sinon. */}
+            {devis.journees && devis.journees.length > 1
+              ? `${devis.prestation} · ${devis.journees.length} journées`
+              : `${devis.prestation} · ${devis.heureDebut} → ${devis.heureFin}`}
           </span>
           <span className="shrink-0 font-semibold text-foreground">
-            {Math.round(heuresEntre(devis.heureDebut, devis.heureFin) * 10) / 10} heures
+            {Math.round((devis.journees && devis.journees.length > 0 ? dureeTotaleJournees(devis.journees) : heuresEntre(devis.heureDebut, devis.heureFin)) * 10) / 10} heures
           </span>
         </span>
         <span className="flex items-baseline justify-between gap-3 text-muted-foreground">

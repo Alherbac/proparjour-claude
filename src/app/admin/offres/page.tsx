@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { requireAdminSession } from "@/lib/admin/auth";
 import { getToutesOffresAdmin } from "@/lib/admin/offres";
 import { METIERS } from "@/config/metiers";
-import { montantMission } from "@/lib/duree";
 import { AdminH1 } from "@/components/admin/ui/section";
 import { AdminKpiCard } from "@/components/admin/ui/kpi-card";
 import { AdminBadge, type AdminBadgeTone } from "@/components/admin/ui/badge";
@@ -59,16 +58,18 @@ export default async function AdminOffresPage() {
             <tbody>
               {offres.map((offre) => {
                 const metier = METIERS.find((m) => m.id === offre.metier);
-                const total = montantMission(offre.heure_debut, offre.heure_fin, offre.tarif_horaire);
                 return (
                   <AdminTr key={offre.id}>
                     <AdminTd truncate>
                       <p className="font-bold text-[var(--a-ink)]">{offre.titre}</p>
-                      <p className="text-[11.5px] text-[var(--a-text-3)]">{offre.demande_id ? "ciblée" : "publique"}</p>
+                      <p className="text-[11.5px] text-[var(--a-text-3)]">
+                        {offre.demande_id ? "ciblée" : "publique"}
+                        {offre.nombre_journees > 1 ? ` · ${offre.nombre_journees} journées` : ""}
+                      </p>
                     </AdminTd>
                     <AdminTd truncate>{metier?.filiere ?? offre.metier}</AdminTd>
                     <AdminTd truncate>{offre.recruteur_nom}</AdminTd>
-                    <AdminTd className="a-tabular" truncate>{total} € ({offre.tarif_horaire} €/h)</AdminTd>
+                    <AdminTd className="a-tabular" truncate>{offre.montant_total} € ({offre.tarif_horaire} €/h)</AdminTd>
                     <AdminTd truncate>{offre.ville}</AdminTd>
                     <AdminTd className="a-tabular">{offre.nombre_candidatures}</AdminTd>
                     <AdminTd>

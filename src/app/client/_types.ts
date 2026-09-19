@@ -9,6 +9,7 @@ import type {
   EntreprisesRow,
   MetierType,
 } from "@/lib/supabase/database.types";
+import type { JourneeMission } from "@/lib/journees";
 
 /**
  * Types et fonctions PURES de la couche de données /client — séparés
@@ -55,6 +56,8 @@ export function missionsDevisAValider(missions: MissionAvecEquipe[]): MissionAve
 }
 
 export type OffreAvecCandidatures = OffresRow & {
+  /** Mission multi-jours (migration 0062) — journées réelles (offres_journees), éventuellement vide si non backfillée. */
+  journees: JourneeMission[];
   candidatures: (CandidaturesRow & {
     prenom: string | null;
     nom: string | null;

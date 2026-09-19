@@ -5,19 +5,23 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { DashButton } from "@/app/client/_components/button";
 import { modifierOffre } from "@/app/actions/offres";
+import { type JourneeMission, validerJournees, trierJourneesParDate } from "@/lib/journees";
+import { EditeurJournees } from "@/components/journees/editeur-journees";
 import type { OffresRow } from "@/lib/supabase/database.types";
 
 const CHAMP = "min-h-[44px] w-full rounded-[10px] border border-[#DDD8D1] bg-white px-3.5 text-[13.5px] text-[#1A1917] outline-none focus:border-[#1A1917]";
 const LABEL = "mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#6B6660]";
 
-export function FormulaireOffre({ offre }: { offre: OffresRow }) {
+export function FormulaireOffre({ offre, journeesInitiales }: { offre: OffresRow; journeesInitiales: JourneeMission[] }) {
   const router = useRouter();
   const [titre, setTitre] = useState(offre.titre);
   const [description, setDescription] = useState(offre.description);
   const [ville, setVille] = useState(offre.ville);
-  const [dateMission, setDateMission] = useState(offre.date_mission);
-  const [heureDebut, setHeureDebut] = useState(offre.heure_debut.slice(0, 5));
-  const [heureFin, setHeureFin] = useState(offre.heure_fin.slice(0, 5));
+  // Mission multi-jours (migration 0062) — toutes les journées de
+  // l'offre (offres_journees), jamais la seule première : sans ça,
+  // "Enregistrer les modifications" écraserait silencieusement les
+  // journées suivantes (bug rapporté en usage réel).
+  const [journees, setJournees] = useState<JourneeMission[]>(journeesInitiales);
   const [tarifHoraire, setTarifHoraire] = useState(String(offre.tarif_horaire));
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, startTransition] = useTransition();
@@ -25,23 +29,31 @@ export function FormulaireOffre({ offre }: { offre: OffresRow }) {
   function enregistrer() {
     setErreur(null);
     const tarif = Number(tarifHoraire.replace(",", "."));
-    if (!titre.trim() || !description.trim() || !ville.trim() || !dateMission) {
-      setErreur("Titre, description, ville et date sont requis.");
+    if (!titre.trim() || !description.trim() || !ville.trim()) {
+      setErreur("Titre, description et ville sont requis.");
+      return;
+    }
+    const erreurJournees = validerJournees(journees);
+    if (erreurJournees) {
+      setErreur(erreurJournees);
       return;
     }
     if (!tarif || tarif <= 0) {
       setErreur("Indiquez un tarif horaire supérieur à 0.");
       return;
     }
+    const journeesTriees = trierJourneesParDate(journees);
+    const premiereJournee = journeesTriees[0];
     startTransition(async () => {
       const res = await modifierOffre(offre.id, {
         titre: titre.trim(),
         description: description.trim(),
         ville: ville.trim(),
-        dateMission,
-        heureDebut,
-        heureFin,
+        dateMission: premiereJournee.date,
+        heureDebut: premiereJournee.heureDebut,
+        heureFin: premiereJournee.heureFin,
         tarifHoraire: tarif,
+        journees: journeesTriees,
       });
       if (!res.success) {
         setErreur(res.error);
@@ -76,19 +88,9 @@ export function FormulaireOffre({ offre }: { offre: OffresRow }) {
         <input id="ville" className={CHAMP} value={ville} onChange={(e) => setVille(e.target.value)} />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div>
-          <label className={LABEL} htmlFor="date">Date</label>
-          <input id="date" type="date" className={CHAMP} value={dateMission} onChange={(e) => setDateMission(e.target.value)} />
-        </div>
-        <div>
-          <label className={LABEL} htmlFor="heureDebut">Heure de début</label>
-          <input id="heureDebut" type="time" className={CHAMP} value={heureDebut} onChange={(e) => setHeureDebut(e.target.value)} />
-        </div>
-        <div>
-          <label className={LABEL} htmlFor="heureFin">Heure de fin</label>
-          <input id="heureFin" type="time" className={CHAMP} value={heureFin} onChange={(e) => setHeureFin(e.target.value)} />
-        </div>
+      <div>
+        <label className={LABEL}>Journées de l&apos;offre</label>
+        <EditeurJournees journees={journees} onChange={setJournees} />
       </div>
 
       <div>
