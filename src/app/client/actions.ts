@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { creerClientSession, creerClientAdmin } from "@/app/client/_supabase";
-import { heuresEntre } from "@/app/client/_lib";
+import {
+  type JourneeMission,
+  validerJournees,
+  trierJourneesParDate,
+  premiereDateJournees,
+  montantTotalJournees,
+  versJourneesRpc,
+} from "@/lib/journees";
 
 type Resultat = { success: true; missionId?: string | null } | { success: false; error: string };
 
@@ -47,10 +54,14 @@ export async function retenirCandidature(candidatureId: string): Promise<Resulta
   if (updateError) return { success: false, error: "Impossible d'enregistrer votre réponse pour le moment." };
 
   const admin = creerClientAdmin();
-  const [{ data: offre }, { data: profil }, { data: parametresCommission }] = await Promise.all([
+  const [{ data: offre }, { data: profil }, { data: parametresCommission }, { data: offreJournees }] = await Promise.all([
     supabase.from("offres").select("titre, description, metier, ville, date_mission, heure_debut, heure_fin, tarif_horaire").eq("id", candidature.offre_id).maybeSingle(),
     admin.from("prestataires_profils").select("id, user_id").eq("id", candidature.prestataire_id).maybeSingle(),
     admin.from("parametres_commission").select("taux").eq("id", true).maybeSingle(),
+    // Mission multi-jours (migration 0062) — journées de l'offre, à
+    // transmettre telles quelles à la mission (offre → journées de
+    // l'offre → journées de la mission, jamais recalculées).
+    supabase.from("offres_journees").select("date, heure_debut, heure_fin").eq("offre_id", candidature.offre_id).order("date", { ascending: true }),
   ]);
 
   if (!offre || !profil) {
@@ -64,8 +75,28 @@ export async function retenirCandidature(candidatureId: string): Promise<Resulta
   // attente sur la même offre (elles restent réintégrables).
   await supabase.from("candidatures").update({ statut: "refusee" }).eq("offre_id", candidature.offre_id).eq("statut", "en_attente");
 
-  const heures = heuresEntre(offre.heure_debut, offre.heure_fin);
-  const montantTotal = Math.round(heures * offre.tarif_horaire * 100) / 100;
+  // Journées de l'offre (0062) — repli sur l'unique journée
+  // {date_mission, heure_debut, heure_fin} de l'offre si, pour une
+  // raison quelconque, offres_journees est vide (offre créée avant la
+  // migration et non encore backfillée, ou publierDemandeGlobale qui
+  // ne les écrit pas encore) : cas N=1 du modèle général, comportement
+  // strictement identique à avant cette migration.
+  const journeesBrutes: JourneeMission[] =
+    offreJournees && offreJournees.length > 0
+      ? offreJournees.map((j) => ({ date: j.date, heureDebut: j.heure_debut, heureFin: j.heure_fin }))
+      : [{ date: offre.date_mission, heureDebut: offre.heure_debut, heureFin: offre.heure_fin }];
+  const erreurJournees = validerJournees(journeesBrutes);
+  if (erreurJournees) {
+    return { success: false, error: "Candidature retenue, mais les journées de l'offre sont invalides — contactez le support." };
+  }
+  const journeesTriees = trierJourneesParDate(journeesBrutes);
+  const journeesAvecTarif = journeesTriees.map((j) => ({ ...j, tarifHoraire: offre.tarif_horaire }));
+
+  // Total mission = somme des montants de TOUTES les journées —
+  // jamais un paiement ou une commission calculée par journée (règle
+  // produit, "mission multi-jours"). La commission n'intervient
+  // qu'une seule fois plus bas, sur ce total unique.
+  const montantTotal = montantTotalJournees(journeesAvecTarif);
   const tauxCommission = parametresCommission?.taux ?? 15;
   const montantCommission = Math.round(montantTotal * (tauxCommission / 100) * 100) / 100;
 
@@ -76,12 +107,20 @@ export async function retenirCandidature(candidatureId: string): Promise<Resulta
     p_prestataire_id: profil.id,
     p_metier: offre.metier,
     p_lieu: offre.ville,
-    p_date_mission: offre.date_mission,
+    // Référence de tri/affichage (missions.date_mission, contrat 0062)
+    // = date de la première journée.
+    p_date_mission: premiereDateJournees(journeesTriees) ?? offre.date_mission,
     p_heure_debut: offre.heure_debut,
     p_heure_fin: offre.heure_fin,
     p_tarif_applique: montantTotal,
     p_montant_total: montantTotal,
     p_taux_commission: tauxCommission,
+    // Journées transmises telles quelles — creer_mission_depuis_candidature
+    // (0062) dérive elle-même heure_debut/heure_fin/tarif_applique de
+    // mission_lignes à partir de ce tableau, jamais des paramètres
+    // p_heure_debut/p_heure_fin/p_tarif_applique ci-dessus une fois
+    // p_journees fourni.
+    p_journees: versJourneesRpc(journeesAvecTarif),
     p_montant_commission: montantCommission,
     p_description: offre.description || null,
   });

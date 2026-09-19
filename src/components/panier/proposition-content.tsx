@@ -12,12 +12,19 @@ import { usePanier } from "@/hooks/use-panier";
 import { viderPanier, retirerParPrestataire } from "@/lib/panier";
 import { extraireBesoin, detecterAdresse, extraireSousBesoins } from "@/lib/besoin";
 import { proposerMission, type LigneProposition } from "@/app/actions/proposition";
+import { type JourneeMission, validerJournees, dureeTotaleJournees } from "@/lib/journees";
+import { EditeurJournees } from "@/components/journees/editeur-journees";
 import { cn } from "@/lib/utils";
 
+function journeeVide(): JourneeMission {
+  return { date: "", heureDebut: "", heureFin: "" };
+}
+
 type ChampsMetier = {
-  heureDebut: string;
-  heureFin: string;
+  /** Mission multi-jours (migration 0062) — au moins une journée toujours présente (jamais un tableau vide). */
+  journees: JourneeMission[];
   precisions: string;
+  /** Vrai seulement quand la journée unique (la première) vient d'être reconnue depuis la phrase libre — perd son sens dès qu'une 2e journée est ajoutée manuellement. */
   reconnuHoraires: boolean;
   /** Uniquement pertinent pour l'accueil (dossier design, capture "plusieurs prestataires") — pas de colonne dédiée côté serveur, fondu dans `precisions` à l'envoi (voir envoyer()) plutôt qu'un nouveau champ de base de données. */
   languesExigees: string;
@@ -63,8 +70,6 @@ export function PropositionContent() {
   const [phraseOuverte, setPhraseOuverte] = useState(false);
 
   const [titre, setTitre] = useState("");
-  const [date, setDate] = useState("");
-  const [dateReconnue, setDateReconnue] = useState(false);
   const [adresse, setAdresse] = useState("");
   const [villeReconnue, setVilleReconnue] = useState<string | null>(null);
   const [contexte, setContexte] = useState("");
@@ -83,7 +88,7 @@ export function PropositionContent() {
   const ongletActif: Onglet = multiMetiers ? onglet : (metiersRetenus[0]?.id ?? "commun");
 
   function champs(metier: MetierId): ChampsMetier {
-    return champsParMetier[metier] ?? { heureDebut: "", heureFin: "", precisions: "", reconnuHoraires: false, languesExigees: "" };
+    return champsParMetier[metier] ?? { journees: [journeeVide()], precisions: "", reconnuHoraires: false, languesExigees: "" };
   }
 
   function analyserPhrase() {
@@ -92,10 +97,6 @@ export function PropositionContent() {
     const adresseDetectee = detecterAdresse(phrase);
     const sousBesoins = extraireSousBesoins(phrase);
 
-    if (besoin.date) {
-      setDate(besoin.date);
-      setDateReconnue(true);
-    }
     if (adresseDetectee?.villeDevinee) {
       setVilleReconnue(adresseDetectee.villeDevinee);
       if (!adresse.trim()) setAdresse(adresseDetectee.villeDevinee);
@@ -105,18 +106,35 @@ export function PropositionContent() {
       setContexteReconnu(true);
     }
 
+    // Mission multi-jours (migration 0062) — la phrase libre ne décrit
+    // encore qu'une seule journée par métier (aucune régression : même
+    // portée qu'avant). Reconnue, elle met à jour la PREMIÈRE journée
+    // de ce métier (date globale de la phrase + horaires propres au
+    // métier), sans toucher à d'éventuelles journées ajoutées à la main.
     setChampsParMetier((prev) => {
       const next = { ...prev };
       for (const sb of sousBesoins) {
         if (!metiersRetenus.some((m) => m.id === sb.metier)) continue;
         if (sb.heureDebut && sb.heureFin) {
+          const actuel = next[sb.metier] ?? champs(sb.metier);
+          const premiereJournee = actuel.journees[0] ?? journeeVide();
           next[sb.metier] = {
-            heureDebut: sb.heureDebut,
-            heureFin: sb.heureFin,
-            precisions: next[sb.metier]?.precisions ?? "",
+            ...actuel,
+            journees: [
+              { date: besoin.date ?? premiereJournee.date, heureDebut: sb.heureDebut, heureFin: sb.heureFin },
+              ...actuel.journees.slice(1),
+            ],
             reconnuHoraires: true,
-            languesExigees: next[sb.metier]?.languesExigees ?? "",
           };
+        }
+      }
+      if (besoin.date) {
+        for (const m of metiersRetenus) {
+          const actuel = next[m.id] ?? champs(m.id);
+          const premiereJournee = actuel.journees[0] ?? journeeVide();
+          if (!premiereJournee.date) {
+            next[m.id] = { ...actuel, journees: [{ ...premiereJournee, date: besoin.date }, ...actuel.journees.slice(1)] };
+          }
         }
       }
       return next;
@@ -125,10 +143,10 @@ export function PropositionContent() {
     setAnalyse(true);
   }
 
-  const communComplet = titre.trim().length > 0 && date.length > 0 && adresse.trim().length > 0;
+  const communComplet = titre.trim().length > 0 && adresse.trim().length > 0;
   const metierComplet = (m: MetierId) => {
     const c = champs(m);
-    return Boolean(c.heureDebut && c.heureFin) && (!metierRequiertLangues(m) || c.languesExigees.trim().length > 0);
+    return validerJournees(c.journees) === null && (!metierRequiertLangues(m) || c.languesExigees.trim().length > 0);
   };
 
   // Le seul métier retenu en mode "1 prestataire" (garanti non vide :
@@ -141,12 +159,12 @@ export function PropositionContent() {
 
   const manques: { label: string; scope: string; onglet: Onglet }[] = [];
   if (!titre.trim()) manques.push({ label: "Titre de la mission", scope: "commun", onglet: "commun" });
-  if (!date) manques.push({ label: "Date de la mission", scope: "commun", onglet: "commun" });
   if (!adresse.trim()) manques.push({ label: "Adresse exacte", scope: "commun", onglet: "commun" });
   for (const m of metiersRetenus) {
     const c = champs(m.id);
     if (metierRequiertLangues(m.id) && !c.languesExigees.trim()) manques.push({ label: "Langues exigées", scope: m.label, onglet: m.id });
-    if (!c.heureDebut || !c.heureFin) manques.push({ label: "Horaires du poste", scope: m.label, onglet: m.id });
+    const erreurJournees = validerJournees(c.journees);
+    if (erreurJournees) manques.push({ label: erreurJournees, scope: m.label, onglet: m.id });
   }
 
   const pretAEnvoyer = communComplet && metiersRetenus.every((m) => metierComplet(m.id));
@@ -162,14 +180,26 @@ export function PropositionContent() {
       const precisions = c.languesExigees.trim()
         ? `Langues exigées : ${c.languesExigees.trim()}${c.precisions.trim() ? ` — ${c.precisions.trim()}` : ""}`
         : c.precisions;
+      // heureDebut/heureFin restent requis par le type LigneProposition
+      // (repli serveur pour d'anciens appelants, voir actions/
+      // proposition.ts) — dérivés ici de la PREMIÈRE journée ; c'est
+      // `journees` qui porte la vérité pour toute journée supplémentaire.
+      const premiereJournee = c.journees[0];
       return {
         prestataireId: l.prestataireId,
         prenom: l.prenom,
-        heureDebut: c.heureDebut,
-        heureFin: c.heureFin,
+        heureDebut: premiereJournee.heureDebut,
+        heureFin: premiereJournee.heureFin,
         precisions,
+        journees: c.journees,
       };
     });
+    // missions.date_mission (contrat 0062) = date la plus ancienne
+    // parmi TOUTES les journées de TOUS les métiers — jamais une
+    // colonne de date globale distincte (voir actions/proposition.ts,
+    // qui recalcule d'ailleurs cette même valeur côté serveur).
+    const toutesLesDates = metiersRetenus.flatMap((m) => champs(m.id).journees.map((j) => j.date).filter(Boolean));
+    const date = toutesLesDates.length > 0 ? toutesLesDates.reduce((min, d) => (d < min ? d : min)) : "";
     startTransition(async () => {
       const resultat = await proposerMission({ titre: titre.trim(), date, adresse: adresse.trim(), contexte, lignes });
       if (!resultat.success) {
@@ -291,45 +321,21 @@ export function PropositionContent() {
             */}
             {!multiMetiers && seulMetier ? (
               <div className="grid gap-4">
-                <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-3">
-                  <ChampSaisie label="Date de la mission" reconnu={dateReconnue} manquant={!date}>
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={(e) => {
-                        setDate(e.target.value);
-                        setDateReconnue(false);
-                      }}
-                      className={champClass(!date)}
-                    />
-                  </ChampSaisie>
-                  <ChampSaisie label="Début" manquant={!champs(seulMetier.id).heureDebut}>
-                    <input
-                      type="time"
-                      value={champs(seulMetier.id).heureDebut}
-                      onChange={(e) =>
-                        setChampsParMetier((prev) => ({
-                          ...prev,
-                          [seulMetier.id]: { ...champs(seulMetier.id), heureDebut: e.target.value, reconnuHoraires: false },
-                        }))
-                      }
-                      className={champClass(!champs(seulMetier.id).heureDebut)}
-                    />
-                  </ChampSaisie>
-                  <ChampSaisie label="Fin" manquant={!champs(seulMetier.id).heureFin}>
-                    <input
-                      type="time"
-                      value={champs(seulMetier.id).heureFin}
-                      onChange={(e) =>
-                        setChampsParMetier((prev) => ({
-                          ...prev,
-                          [seulMetier.id]: { ...champs(seulMetier.id), heureFin: e.target.value, reconnuHoraires: false },
-                        }))
-                      }
-                      className={champClass(!champs(seulMetier.id).heureFin)}
-                    />
-                  </ChampSaisie>
-                </div>
+                {/* Mission multi-jours (migration 0062) — une seule
+                    journée : rendu identique à l'ancien bloc [Date]
+                    [Début][Fin] (README "reste aussi proche que
+                    possible de l'existant"). Plusieurs : "+ Ajouter
+                    une journée" fait apparaître les lignes suivantes,
+                    numérotées et supprimables (jamais la dernière). */}
+                <EditeurJournees
+                  journees={champs(seulMetier.id).journees}
+                  onChange={(journees) =>
+                    setChampsParMetier((prev) => ({
+                      ...prev,
+                      [seulMetier.id]: { ...champs(seulMetier.id), journees, reconnuHoraires: false },
+                    }))
+                  }
+                />
 
                 <ChampSaisie
                   label="Adresse exacte"
@@ -385,35 +391,22 @@ export function PropositionContent() {
                     <div className="flex flex-wrap items-baseline gap-[10px]">
                       <span className="text-[15px] font-semibold text-ppj-ink">Commun à tous les métiers</span>
                       <span className="text-[12.5px] text-[#7A756D]">
-                        saisi une seule fois — les horaires se règlent dans chaque onglet métier
+                        saisi une seule fois — les journées se règlent dans chaque onglet métier
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-[1fr_1.4fr]">
-                      <ChampSaisie label="Date de la mission" reconnu={dateReconnue} manquant={!date}>
-                        <input
-                          type="date"
-                          value={date}
-                          onChange={(e) => {
-                            setDate(e.target.value);
-                            setDateReconnue(false);
-                          }}
-                          className={champClass(!date)}
-                        />
-                      </ChampSaisie>
-                      <ChampSaisie
-                        label="Adresse exacte"
-                        reconnu={Boolean(villeReconnue)}
-                        reconnuDetail={villeReconnue ? `« ${villeReconnue} » reconnu` : undefined}
-                        manquant={!adresse.trim()}
-                      >
-                        <AdresseAutocomplete
-                          id="adresse-proposition"
-                          value={adresse}
-                          onChange={(v) => setAdresse(v)}
-                          placeholder="Numéro, rue, code postal, ville"
-                        />
-                      </ChampSaisie>
-                    </div>
+                    <ChampSaisie
+                      label="Adresse exacte"
+                      reconnu={Boolean(villeReconnue)}
+                      reconnuDetail={villeReconnue ? `« ${villeReconnue} » reconnu` : undefined}
+                      manquant={!adresse.trim()}
+                    >
+                      <AdresseAutocomplete
+                        id="adresse-proposition"
+                        value={adresse}
+                        onChange={(v) => setAdresse(v)}
+                        placeholder="Numéro, rue, code postal, ville"
+                      />
+                    </ChampSaisie>
                     <ChampSaisie label="Titre de la mission" manquant={!titre.trim()}>
                       <input
                         value={titre}
@@ -440,8 +433,9 @@ export function PropositionContent() {
                   if (ongletActif !== m.id) return null;
                   const c = champs(m.id);
                   const nb = panier.lignes.filter((l) => l.metier === m.id).length;
-                  const autreAvecHoraires = metiersRetenus.find(
-                    (autre) => autre.id !== m.id && champs(autre.id).heureDebut && champs(autre.id).heureFin,
+                  const erreurJournees = validerJournees(c.journees);
+                  const autreAvecJournees = metiersRetenus.find(
+                    (autre) => autre.id !== m.id && validerJournees(champs(autre.id).journees) === null,
                   );
                   return (
                     <div key={m.id} className="grid gap-4">
@@ -452,42 +446,23 @@ export function PropositionContent() {
                         <span
                           className={cn(
                             "mb-[7px] flex items-center gap-[7px] text-[13px] font-semibold",
-                            !c.reconnuHoraires && (!c.heureDebut || !c.heureFin) ? "text-[#8E2A26]" : "text-ppj-ink",
+                            !c.reconnuHoraires && erreurJournees ? "text-[#8E2A26]" : "text-ppj-ink",
                           )}
                         >
-                          Horaires de ce poste
-                          {c.reconnuHoraires ? (
+                          {c.journees.length > 1 ? "Journées de ce poste" : "Horaires de ce poste"}
+                          {c.reconnuHoraires && c.journees.length === 1 ? (
                             <Badge>reconnu</Badge>
-                          ) : !c.heureDebut || !c.heureFin ? (
+                          ) : erreurJournees ? (
                             <BadgeManquant>requis</BadgeManquant>
                           ) : null}
                         </span>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="time"
-                            value={c.heureDebut}
-                            onChange={(e) =>
-                              setChampsParMetier((prev) => ({
-                                ...prev,
-                                [m.id]: { ...champs(m.id), heureDebut: e.target.value, reconnuHoraires: false },
-                              }))
-                            }
-                            className={inputHoraireClass(!c.heureDebut)}
-                          />
-                          <span className="text-[13px] text-ppj-text-4">→</span>
-                          <input
-                            type="time"
-                            value={c.heureFin}
-                            onChange={(e) =>
-                              setChampsParMetier((prev) => ({
-                                ...prev,
-                                [m.id]: { ...champs(m.id), heureFin: e.target.value, reconnuHoraires: false },
-                              }))
-                            }
-                            className={inputHoraireClass(!c.heureFin)}
-                          />
-                        </div>
-                        {!c.heureDebut && autreAvecHoraires && (
+                        <EditeurJournees
+                          journees={c.journees}
+                          onChange={(journees) =>
+                            setChampsParMetier((prev) => ({ ...prev, [m.id]: { ...champs(m.id), journees, reconnuHoraires: false } }))
+                          }
+                        />
+                        {c.journees.length === 1 && !c.journees[0].heureDebut && autreAvecJournees && (
                           <button
                             type="button"
                             onClick={() =>
@@ -495,15 +470,14 @@ export function PropositionContent() {
                                 ...prev,
                                 [m.id]: {
                                   ...champs(m.id),
-                                  heureDebut: champs(autreAvecHoraires.id).heureDebut,
-                                  heureFin: champs(autreAvecHoraires.id).heureFin,
+                                  journees: champs(autreAvecJournees.id).journees.map((j) => ({ ...j })),
                                   reconnuHoraires: false,
                                 },
                               }))
                             }
                             className="mt-2 rounded-full border border-ppj-line bg-ppj-fill px-2.5 py-[5px] text-[12px] text-ppj-neutral-text hover:border-ppj-ink"
                           >
-                            Comme {autreAvecHoraires.label} ({champs(autreAvecHoraires.id).heureDebut} → {champs(autreAvecHoraires.id).heureFin})
+                            Comme {autreAvecJournees.label}
                           </button>
                         )}
                       </div>
@@ -632,7 +606,11 @@ export function PropositionContent() {
                               <span className="mt-0.5 block text-[11.5px] text-[#6B6660]">
                                 {l.tarifMontant} € / {l.tarifType === "horaire" ? "heure" : "jour"}
                                 {l.certifications && l.certifications.length > 0 ? ` · ${l.certifications.join(" · ")}` : ""}
-                                {c.heureDebut && c.heureFin ? ` · ${c.heureDebut} → ${c.heureFin}` : ""}
+                                {c.journees.length > 1
+                                  ? ` · ${c.journees.length} journées`
+                                  : c.journees[0]?.heureDebut && c.journees[0]?.heureFin
+                                    ? ` · ${c.journees[0].heureDebut} → ${c.journees[0].heureFin}`
+                                    : ""}
                               </span>
                             </span>
                           </div>
@@ -692,7 +670,7 @@ export function PropositionContent() {
                     <span key={m.id} className="flex items-center justify-between gap-3">
                       <span className="text-[#6B6660]">
                         {m.filiere} · {nb} pro{nb > 1 ? "s" : ""}
-                        {c.heureDebut && c.heureFin ? ` · ${heuresDuree(c.heureDebut, c.heureFin)} h` : ""}
+                        {validerJournees(c.journees) === null ? ` · ${dureeTotaleJournees(c.journees)} h` : ""}
                       </span>
                       <span>selon devis</span>
                     </span>
@@ -745,20 +723,6 @@ function champClass(manquant: boolean) {
   return manquant
     ? "w-full rounded-[12px] border-[1.5px] border-primary bg-white px-[14px] py-[15px] text-[16px] text-ppj-ink placeholder:text-[#98938B] focus:outline-none"
     : "w-full rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-[14px] py-[15px] text-[16px] text-ppj-ink placeholder:text-[#98938B] focus:outline-none";
-}
-
-function heuresDuree(debut: string, fin: string): number {
-  const [h1, m1] = debut.split(":").map(Number);
-  const [h2, m2] = fin.split(":").map(Number);
-  let minutes = h2 * 60 + m2 - (h1 * 60 + m1);
-  if (minutes <= 0) minutes += 24 * 60;
-  return Math.round((minutes / 60) * 10) / 10;
-}
-
-function inputHoraireClass(manquant: boolean) {
-  return manquant
-    ? "flex-1 rounded-[11px] border-[1.5px] border-primary bg-white px-3 py-[9px] text-[14px] text-ppj-ink focus:outline-none"
-    : "flex-1 rounded-[11px] border border-[#E6E2DC] bg-[#FCFBF9] px-3 py-[10px] text-[14px] text-ppj-ink focus:outline-none";
 }
 
 /**

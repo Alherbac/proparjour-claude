@@ -264,6 +264,43 @@ export type OffresRow = {
   updated_at: string;
 };
 
+// Mission multi-jours (migration 0062) — une ligne par journée d'une
+// mission_ligne. Mêmes colonnes d'exécution que MissionLignesRow,
+// déplacées ici pour permettre plusieurs déclarations par ligne.
+export type MissionLignesJourneesRow = {
+  id: string;
+  mission_ligne_id: string;
+  date: string;
+  heure_debut: string;
+  heure_fin: string;
+  tarif_applique: number;
+  heure_debut_reelle: string | null;
+  heure_debut_declaree_le: string | null;
+  heure_debut_declaree_par: string | null;
+  heure_debut_statut: StatutHoraireDeclareType | null;
+  motif_contestation_debut: string | null;
+  heure_fin_reelle: string | null;
+  heure_fin_declaree_le: string | null;
+  heure_fin_declaree_par: string | null;
+  heure_fin_statut: StatutHoraireDeclareType | null;
+  motif_contestation_fin: string | null;
+  tarif_final: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Mission multi-jours (migration 0062) — une ligne par journée d'une
+// offre, avant transformation éventuelle en mission.
+export type OffresJourneesRow = {
+  id: string;
+  offre_id: string;
+  date: string;
+  heure_debut: string;
+  heure_fin: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type DemandesRow = {
   id: string;
   client_id: string;
@@ -643,6 +680,37 @@ export type Database = {
         Update: Partial<MissionLignesRow>;
         Relationships: [];
       };
+      mission_lignes_journees: {
+        Row: MissionLignesJourneesRow;
+        Insert: Omit<
+          MissionLignesJourneesRow,
+          | "id"
+          | "created_at"
+          | "updated_at"
+          | "heure_debut_reelle"
+          | "heure_debut_declaree_le"
+          | "heure_debut_declaree_par"
+          | "heure_debut_statut"
+          | "motif_contestation_debut"
+          | "heure_fin_reelle"
+          | "heure_fin_declaree_le"
+          | "heure_fin_declaree_par"
+          | "heure_fin_statut"
+          | "motif_contestation_fin"
+          | "tarif_final"
+        > &
+          Partial<Pick<MissionLignesJourneesRow, "id">>;
+        Update: Partial<MissionLignesJourneesRow>;
+        Relationships: [
+          {
+            foreignKeyName: "mission_lignes_journees_mission_ligne_id_fkey";
+            columns: ["mission_ligne_id"];
+            isOneToOne: false;
+            referencedRelation: "mission_lignes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       offres: {
         Row: OffresRow;
         Insert: Omit<OffresRow, "id" | "created_at" | "updated_at" | "statut" | "demande_id"> &
@@ -654,6 +722,20 @@ export type Database = {
             columns: ["demande_id"];
             isOneToOne: false;
             referencedRelation: "demandes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      offres_journees: {
+        Row: OffresJourneesRow;
+        Insert: Omit<OffresJourneesRow, "id" | "created_at" | "updated_at"> & Partial<Pick<OffresJourneesRow, "id">>;
+        Update: Partial<OffresJourneesRow>;
+        Relationships: [
+          {
+            foreignKeyName: "offres_journees_offre_id_fkey";
+            columns: ["offre_id"];
+            isOneToOne: false;
+            referencedRelation: "offres";
             referencedColumns: ["id"];
           },
         ];
@@ -827,6 +909,11 @@ export type Database = {
           p_taux_commission: number;
           p_montant_commission: number;
           p_description?: string | null;
+          // Mission multi-jours (migration 0062) — tableau optionnel de
+          // {date, heure_debut, heure_fin, tarif_applique} ; absent,
+          // repli sur l'unique journée dérivée des champs ci-dessus
+          // (comportement identique à avant 0062).
+          p_journees?: { date: string; heure_debut: string; heure_fin: string; tarif_applique: number }[] | null;
         };
         Returns: string;
       };
@@ -845,6 +932,11 @@ export type Database = {
             heure_debut: string;
             heure_fin: string;
             tarif_applique: number;
+            // Mission multi-jours (migration 0062) — clé optionnelle,
+            // propre à CETTE ligne (chaque prestataire peut avoir son
+            // propre jeu de journées). Absente, repli sur l'unique
+            // heure_debut/heure_fin/tarif_applique ci-dessus.
+            journees?: { date: string; heure_debut: string; heure_fin: string; tarif_applique: number }[];
           }[];
           p_montant_total: number;
           p_taux_commission: number;

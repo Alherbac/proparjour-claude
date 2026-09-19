@@ -3,12 +3,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTauxCommission } from "@/lib/commission";
-import { montantMission } from "@/lib/duree";
 import { creerNotification } from "@/lib/notifications";
 import { creerMessageSysteme } from "@/lib/messages";
 import { traduireErreurDb } from "@/lib/erreurs-db";
 import { METIERS } from "@/config/metiers";
 import type { MetierType } from "@/lib/supabase/database.types";
+import {
+  type JourneeMission,
+  validerJournees,
+  trierJourneesParDate,
+  montantTotalJournees,
+  versJourneesRpc,
+} from "@/lib/journees";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -21,6 +27,17 @@ export type LigneProposition = {
   heureFin: string;
   /** Libre, propre à ce professionnel (qualifications, missions confiées, tenue...) — README §9, "chaque professionnel ne reçoit que les informations de son métier". */
   precisions: string;
+  /**
+   * Mission multi-jours (migration 0062) — optionnel, propre à CE
+   * professionnel (deux prestataires de la même mission peuvent avoir
+   * des jeux de journées différents). Absent ou vide : repli sur
+   * l'unique journée {date de la mission, heureDebut, heureFin}
+   * ci-dessus — cas N=1 du modèle général, comportement strictement
+   * identique à avant cette migration. L'UI actuelle (proposition-
+   * content.tsx) ne construit pas encore ce tableau — Phase 2A porte
+   * sur le flux de données, pas sur l'ajout de journées dans l'écran.
+   */
+  journees?: JourneeMission[];
 };
 
 export type PropositionInput = {
@@ -64,10 +81,25 @@ export async function proposerMission(input: PropositionInput): Promise<ActionRe
   if (input.lignes.length === 0) {
     return { success: false, error: "Ajoutez au moins un professionnel avant d'envoyer." };
   }
+
+  // Mission multi-jours (migration 0062) — chaque ligne a son propre
+  // jeu de journées, optionnel : absent, on retombe sur l'unique
+  // journée {date de la mission, heureDebut, heureFin} de la ligne —
+  // cas N=1 du modèle général, jamais un système séparé. Triées par
+  // date croissante ici : la RPC ne peut pas déduire seule "la date la
+  // plus ancienne tous prestataires confondus" (elle traite plusieurs
+  // lignes), c'est donc à cet appelant de le faire.
+  const journeesParLigne = new Map<string, JourneeMission[]>();
   for (const ligne of input.lignes) {
-    if (!ligne.heureDebut || !ligne.heureFin || ligne.heureDebut === ligne.heureFin) {
-      return { success: false, error: `Horaires requis pour ${ligne.prenom}.` };
+    const brut: JourneeMission[] =
+      ligne.journees && ligne.journees.length > 0
+        ? ligne.journees
+        : [{ date: input.date, heureDebut: ligne.heureDebut, heureFin: ligne.heureFin }];
+    const erreur = validerJournees(brut);
+    if (erreur) {
+      return { success: false, error: `${ligne.prenom} : ${erreur}` };
     }
+    journeesParLigne.set(ligne.prestataireId, trierJourneesParDate(brut));
   }
 
   const admin = createAdminClient();
@@ -100,22 +132,35 @@ export async function proposerMission(input: PropositionInput): Promise<ActionRe
     heure_debut: string;
     heure_fin: string;
     tarif_applique: number;
+    journees: { date: string; heure_debut: string; heure_fin: string; tarif_applique: number }[];
   }[] = [];
+  // Le total mission = somme des montants de TOUTES les journées de
+  // TOUTES les lignes — jamais une commission ou un paiement calculé
+  // par journée (règle produit, "mission multi-jours") : la commission
+  // n'intervient qu'une seule fois plus bas, sur ce total unique.
   let montantTotal = 0;
+  let premiereDate: string | null = null;
 
   for (const ligne of input.lignes) {
     const reel = parId.get(ligne.prestataireId);
     if (!reel) {
       return { success: false, error: `${ligne.prenom} n'est plus disponible à la réservation.` };
     }
-    const montant = montantMission(ligne.heureDebut, ligne.heureFin, reel.tarif_montant ?? 0);
-    montantTotal += montant;
+    const journeesTriees = journeesParLigne.get(ligne.prestataireId) ?? [];
+    const tarifHoraire = reel.tarif_montant ?? 0;
+    const journeesRpc = versJourneesRpc(journeesTriees.map((j) => ({ ...j, tarifHoraire })));
+    const montantLigne = montantTotalJournees(journeesTriees.map((j) => ({ ...j, tarifHoraire })));
+    montantTotal += montantLigne;
+    if (premiereDate === null || journeesRpc[0].date < premiereDate) {
+      premiereDate = journeesRpc[0].date;
+    }
     lignesRpc.push({
       prestataire_id: reel.id,
       metier: reel.metier,
-      heure_debut: ligne.heureDebut,
-      heure_fin: ligne.heureFin,
-      tarif_applique: montant,
+      heure_debut: journeesRpc[0].heure_debut,
+      heure_fin: journeesRpc[0].heure_fin,
+      tarif_applique: montantLigne,
+      journees: journeesRpc,
     });
   }
   montantTotal = Math.round(montantTotal * 100) / 100;
@@ -126,7 +171,12 @@ export async function proposerMission(input: PropositionInput): Promise<ActionRe
   const { data: missionId, error: missionError } = await admin.rpc("creer_mission_proposee", {
     p_recruteur_id: user.id,
     p_lieu: adresse,
-    p_date_mission: input.date,
+    // Référence de tri/affichage (missions.date_mission, contrat 0062)
+    // = la date la plus ancienne parmi TOUTES les journées de TOUTES
+    // les lignes. Repli sur input.date si, par construction, aucune
+    // journée n'a pu être déterminée (ne devrait jamais arriver : le
+    // tableau lignesRpc est non vide à ce stade).
+    p_date_mission: premiereDate ?? input.date,
     p_lignes: lignesRpc,
     p_montant_total: montantTotal,
     p_taux_commission: tauxCommission,
@@ -145,10 +195,19 @@ export async function proposerMission(input: PropositionInput): Promise<ActionRe
       const reel = parId.get(ligne.prestataireId);
       if (!reel) return Promise.resolve();
       const metierLabel = METIERS.find((m) => m.id === reel.metier)?.label ?? reel.metier;
+      // Une seule journée (cas N=1, immense majorité aujourd'hui) :
+      // ligne identique à avant cette migration. Plusieurs journées :
+      // chacune listée avec sa propre date/horaires — jamais un seul
+      // horaire affiché pour une mission qui en couvre plusieurs.
+      const journeesTriees = journeesParLigne.get(ligne.prestataireId) ?? [];
+      const ligneHoraires =
+        journeesTriees.length > 1
+          ? journeesTriees.map((j) => `${j.date} · ${j.heureDebut} → ${j.heureFin}`).join("\n")
+          : `${ligne.heureDebut} → ${ligne.heureFin}`;
       const lignesMessage = [
         `📋 Nouvelle mission proposée : ${titre}`,
         `${adresse} — ${input.date}`,
-        `${metierLabel} · ${ligne.heureDebut} → ${ligne.heureFin}`,
+        `${metierLabel} · ${ligneHoraires}`,
         ...(contexte ? [contexte] : []),
         ...(ligne.precisions.trim() ? [ligne.precisions.trim()] : []),
       ];

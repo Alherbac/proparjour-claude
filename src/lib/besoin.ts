@@ -1,5 +1,6 @@
 import type { MetierId } from "@/config/metiers";
 import { normaliserTexte, motsProches } from "@/lib/similarite-texte";
+import type { JourneeMission } from "@/lib/journees";
 
 /**
  * Extraction heuristique (mots-clés + regex), volontairement légère
@@ -1080,6 +1081,14 @@ export type BesoinEnCours = {
   // multi-métiers (SousBesoinEnCours, plus bas) les avait déjà.
   tarifHoraire?: number | null;
   titre?: string;
+  // Mission multi-jours (migration 0062) — optionnel : absent ou vide
+  // sur un brouillon antérieur, l'appelant (besoin-capture.tsx)
+  // reconstruit une seule journée depuis date/heureDebut/heureFin
+  // ci-dessus, jamais une erreur sur un vieux brouillon. Présent,
+  // prioritaire sur les champs scalaires — ceux-ci restent écrits en
+  // parallèle (= première journée) uniquement pour qu'un retour à une
+  // version antérieure du code garde un brouillon exploitable.
+  journees?: JourneeMission[];
 };
 
 // Durée de vie d'un brouillon sauvegardé côté client — assez large pour
@@ -1137,6 +1146,10 @@ export type SousBesoinEnCours = {
   // Lot B — mêmes garanties d'optionnalité que BesoinEnCours ci-dessus.
   contexte?: ContexteDetecte | null;
   contraintes?: ContrainteDetectee[];
+  // Mission multi-jours (migration 0062) — mêmes garanties que
+  // BesoinEnCours.journees ci-dessus (optionnel, prioritaire sur
+  // date/heureDebut/heureFin quand présent et non vide).
+  journees?: JourneeMission[];
 };
 
 export type DemandeEnCours = {
@@ -1149,6 +1162,10 @@ export type DemandeEnCours = {
   date: string;
   heureDebut: string;
   heureFin: string;
+  // Mission multi-jours (migration 0062) — journées COMMUNES de la
+  // demande (voir Chip.journees/journeesResolues, besoin-capture.tsx) ;
+  // mêmes garanties d'optionnalité que ci-dessus.
+  journees?: JourneeMission[];
   sousBesoins: SousBesoinEnCours[];
 };
 

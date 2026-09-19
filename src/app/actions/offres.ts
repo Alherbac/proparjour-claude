@@ -10,6 +10,7 @@ import { traduireErreurDb } from "@/lib/erreurs-db";
 import { detecterCoordonnees, messageCoordonneesBloquees } from "@/lib/coordonnees-interdites";
 import { envoyerEmailNouvelleOffre } from "@/lib/email";
 import type { ContexteDetecte, ContrainteDetectee } from "@/lib/besoin";
+import { type JourneeMission, validerJournees, trierJourneesParDate } from "@/lib/journees";
 
 type ActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? object : { data: T }))
@@ -24,6 +25,15 @@ export type PublierOffreInput = {
   heureDebut: string;
   heureFin: string;
   tarifHoraire: number;
+  /**
+   * Mission multi-jours (migration 0062) — optionnel : absent ou
+   * vide, l'offre reste une seule journée {dateMission, heureDebut,
+   * heureFin} — cas N=1 du modèle général, comportement strictement
+   * identique à avant cette migration. L'UI actuelle (besoin-
+   * capture.tsx) ne construit pas encore ce tableau — Phase 2A porte
+   * sur le flux de données, pas sur l'ajout de journées dans l'écran.
+   */
+  journees?: JourneeMission[];
 };
 
 /**
@@ -43,15 +53,26 @@ export async function publierOffre(
     return { success: false, error: "Vous devez être connecté." };
   }
 
-  if (!input.titre.trim() || !input.description.trim() || !input.ville.trim() || !input.dateMission) {
-    return { success: false, error: "Titre, description, ville et date sont requis." };
+  if (!input.titre.trim() || !input.description.trim() || !input.ville.trim()) {
+    return { success: false, error: "Titre, description et ville sont requis." };
   }
   if (!input.tarifHoraire || input.tarifHoraire <= 0) {
     return { success: false, error: "Indiquez un tarif horaire supérieur à 0." };
   }
-  if (input.heureDebut === input.heureFin) {
-    return { success: false, error: "L'heure de fin doit être différente de l'heure de début." };
+
+  // Mission multi-jours (migration 0062) — repli sur l'unique journée
+  // {dateMission, heureDebut, heureFin} quand journees est absent :
+  // cas N=1 du modèle général, jamais un système séparé.
+  const journeesBrutes: JourneeMission[] =
+    input.journees && input.journees.length > 0
+      ? input.journees
+      : [{ date: input.dateMission, heureDebut: input.heureDebut, heureFin: input.heureFin }];
+  const erreurJournees = validerJournees(journeesBrutes);
+  if (erreurJournees) {
+    return { success: false, error: erreurJournees };
   }
+  const journeesTriees = trierJourneesParDate(journeesBrutes);
+  const premiereJournee = journeesTriees[0];
 
   const { data: offre, error } = await supabase
     .from("offres")
@@ -61,9 +82,11 @@ export async function publierOffre(
       description: input.description.trim(),
       metier: input.metier,
       ville: input.ville.trim(),
-      date_mission: input.dateMission,
-      heure_debut: input.heureDebut,
-      heure_fin: input.heureFin,
+      // Référence de tri/affichage (offres.date_mission, contrat
+      // 0062) = date/horaires de la première journée.
+      date_mission: premiereJournee.date,
+      heure_debut: premiereJournee.heureDebut,
+      heure_fin: premiereJournee.heureFin,
       tarif_horaire: input.tarifHoraire,
     })
     .select("id")
@@ -71,6 +94,22 @@ export async function publierOffre(
 
   if (error || !offre) {
     return { success: false, error: error ? traduireErreurDb(error, "Échec de la publication de l'offre.") : "Échec de la publication de l'offre." };
+  }
+
+  // Journées de l'offre — insert direct via le client de session (RLS
+  // offres_journees_insert_proprietaire, migration 0062), une ligne
+  // par journée. Échec signalé mais offre déjà créée à ce stade —
+  // même compromis assumé ailleurs dans ce fichier (ex. échec de
+  // création de mission après candidature retenue) plutôt qu'une
+  // transaction applicative hors périmètre de cette phase.
+  const { error: journeesError } = await supabase
+    .from("offres_journees")
+    .insert(journeesTriees.map((j) => ({ offre_id: offre.id, date: j.date, heure_debut: j.heureDebut, heure_fin: j.heureFin })));
+  if (journeesError) {
+    return {
+      success: false,
+      error: traduireErreurDb(journeesError, "Offre publiée, mais l'enregistrement des journées a échoué — contactez le support."),
+    };
   }
 
   const admin = createAdminClient();
@@ -87,10 +126,10 @@ export async function publierOffre(
           userId: p.user_id,
           type: "offre_correspondante",
           titre: "Nouvelle offre de mission",
-          contenu: `${input.titre} — ${input.ville}, le ${input.dateMission}`,
+          contenu: `${input.titre} — ${input.ville}, le ${premiereJournee.date}`,
           lien: "/prestataire/opportunites",
         }),
-        envoyerEmailNouvelleOffre(p.user_id, input.titre.trim(), `${input.ville}, le ${input.dateMission}`),
+        envoyerEmailNouvelleOffre(p.user_id, input.titre.trim(), `${input.ville}, le ${premiereJournee.date}`),
       ]),
     ),
   );
@@ -114,6 +153,11 @@ export type PublierDemandeInput = {
     dateMission: string;
     heureDebut: string;
     heureFin: string;
+    // Mission multi-jours (migration 0062) — optionnel : absent ou
+    // vide, repli sur l'unique journée {dateMission, heureDebut,
+    // heureFin} ci-dessus (cas N=1). Présent, prioritaire — voir
+    // publierDemandeGlobale.
+    journees?: JourneeMission[];
     // Lot B — propres à CE sous-besoin uniquement (voir besoin-capture.tsx,
     // extraireSousBesoins) : jamais partagés avec les autres métiers de la
     // même demande dans la description générée ci-dessous.
@@ -148,6 +192,13 @@ export async function publierDemandeGlobale(
   if (input.sousBesoins.length === 0) {
     return { success: false, error: "Ajoutez au moins un besoin." };
   }
+  // Mission multi-jours (migration 0062) — journées résolues et
+  // validées UNE FOIS par sous-besoin (jamais un second moteur de
+  // calcul, validerJournees/lib/journees.ts) ; réutilisées plus bas
+  // pour construire `lignes` ET `offres_journees`, en conservant
+  // exactement l'ordre de `input.sousBesoins` pour la corrélation par
+  // index avec `quantite`.
+  const journeesParSousBesoin: JourneeMission[][] = [];
   for (const sb of input.sousBesoins) {
     if (!Number.isInteger(sb.quantite) || sb.quantite < 1) {
       return { success: false, error: "Chaque besoin doit avoir une quantité d'au moins 1." };
@@ -155,12 +206,16 @@ export async function publierDemandeGlobale(
     if (!sb.tarifHoraire || sb.tarifHoraire <= 0) {
       return { success: false, error: "Indiquez un tarif horaire supérieur à 0 pour chaque besoin." };
     }
-    if (!sb.ville.trim() || !sb.dateMission) {
-      return { success: false, error: "Ville et date sont requises pour chaque besoin." };
+    if (!sb.ville.trim()) {
+      return { success: false, error: "La ville est requise pour chaque besoin." };
     }
-    if (sb.heureDebut === sb.heureFin) {
-      return { success: false, error: "L'heure de fin doit être différente de l'heure de début pour chaque besoin." };
+    const journeesBrutes: JourneeMission[] =
+      sb.journees && sb.journees.length > 0 ? sb.journees : [{ date: sb.dateMission, heureDebut: sb.heureDebut, heureFin: sb.heureFin }];
+    const erreurJournees = validerJournees(journeesBrutes);
+    if (erreurJournees) {
+      return { success: false, error: erreurJournees };
     }
+    journeesParSousBesoin.push(trierJourneesParDate(journeesBrutes));
   }
 
   const { data: demande, error: demandeError } = await supabase
@@ -192,24 +247,55 @@ export async function publierDemandeGlobale(
     return lignes.length > 0 ? `\n\n${lignes.join("\n\n")}` : "";
   };
 
-  const lignes = input.sousBesoins.flatMap((sb) =>
-    Array.from({ length: sb.quantite }, (_, i) => ({
+  const lignes = input.sousBesoins.flatMap((sb, idxSousBesoin) => {
+    const premiereJournee = journeesParSousBesoin[idxSousBesoin][0];
+    return Array.from({ length: sb.quantite }, (_, i) => ({
       recruteur_id: user.id,
       demande_id: demande.id,
       titre: `${input.titre.trim()} — ${metierLabel(sb.metier)}${sb.quantite > 1 ? ` (${i + 1}/${sb.quantite})` : ""}`,
       description: `Besoin "${input.titre.trim()}" — poste ${metierLabel(sb.metier)} ${i + 1} sur ${sb.quantite}.${blocContexteContraintes(sb)}`,
       metier: sb.metier,
       ville: sb.ville.trim(),
-      date_mission: sb.dateMission,
-      heure_debut: sb.heureDebut,
-      heure_fin: sb.heureFin,
+      // Référence de tri/affichage (offres.date_mission, contrat 0062)
+      // = date/horaires de la première journée.
+      date_mission: premiereJournee.date,
+      heure_debut: premiereJournee.heureDebut,
+      heure_fin: premiereJournee.heureFin,
       tarif_horaire: sb.tarifHoraire,
-    })),
+    }));
+  });
+  // Même structure de répétition que `lignes` ci-dessus (un tableau de
+  // journées par ligne créée, pas par sous-besoin) — garantit que
+  // `journeesParLigne[i]` corresponde exactement à `lignes[i]`, donc à
+  // `offresCreees[i]` plus bas (voir corrélation par index).
+  const journeesParLigne: JourneeMission[][] = input.sousBesoins.flatMap((sb, idxSousBesoin) =>
+    Array.from({ length: sb.quantite }, () => journeesParSousBesoin[idxSousBesoin]),
   );
 
   const { data: offresCreees, error: offresError } = await supabase.from("offres").insert(lignes).select("id, metier");
   if (offresError || !offresCreees) {
     return { success: false, error: offresError ? traduireErreurDb(offresError, "Échec de la publication des besoins.") : "Échec de la publication des besoins." };
+  }
+
+  // Mission multi-jours (migration 0062) — `offresCreees[i]` correspond
+  // à `lignes[i]`/`journeesParLigne[i]` : un INSERT ... VALUES (...)
+  // RETURNING conserve l'ordre des lignes fournies (Postgres), donc la
+  // corrélation par index est fiable, y compris quand `quantite > 1`
+  // réplique plusieurs offres identiques pour un même sous-besoin —
+  // chacune reçoit alors EXACTEMENT les mêmes journées, jamais
+  // `quantite × nombre_de_journées` offres.
+  const journeesInsert: { offre_id: string; date: string; heure_debut: string; heure_fin: string }[] = [];
+  for (const [i, offre] of offresCreees.entries()) {
+    for (const j of journeesParLigne[i]) {
+      journeesInsert.push({ offre_id: offre.id, date: j.date, heure_debut: j.heureDebut, heure_fin: j.heureFin });
+    }
+  }
+  const { error: journeesError } = await supabase.from("offres_journees").insert(journeesInsert);
+  if (journeesError) {
+    return {
+      success: false,
+      error: traduireErreurDb(journeesError, "Besoins publiés, mais l'enregistrement des journées a échoué — contactez le support."),
+    };
   }
 
   const admin = createAdminClient();
@@ -344,6 +430,8 @@ export type ModifierOffreInput = {
   heureDebut: string;
   heureFin: string;
   tarifHoraire: number;
+  /** Mission multi-jours (migration 0062) — voir PublierOffreInput.journees ; même repli sur l'unique journée quand absent. */
+  journees?: JourneeMission[];
 };
 
 async function offrePeutEtreModifiee(
@@ -387,15 +475,23 @@ export async function modifierOffre(offreId: string, input: ModifierOffreInput):
     return { success: false, error: "Vous devez être connecté." };
   }
 
-  if (!input.titre.trim() || !input.description.trim() || !input.ville.trim() || !input.dateMission) {
-    return { success: false, error: "Titre, description, ville et date sont requis." };
+  if (!input.titre.trim() || !input.description.trim() || !input.ville.trim()) {
+    return { success: false, error: "Titre, description et ville sont requis." };
   }
   if (!input.tarifHoraire || input.tarifHoraire <= 0) {
     return { success: false, error: "Indiquez un tarif horaire supérieur à 0." };
   }
-  if (input.heureDebut === input.heureFin) {
-    return { success: false, error: "L'heure de fin doit être différente de l'heure de début." };
+
+  const journeesBrutes: JourneeMission[] =
+    input.journees && input.journees.length > 0
+      ? input.journees
+      : [{ date: input.dateMission, heureDebut: input.heureDebut, heureFin: input.heureFin }];
+  const erreurJournees = validerJournees(journeesBrutes);
+  if (erreurJournees) {
+    return { success: false, error: erreurJournees };
   }
+  const journeesTriees = trierJourneesParDate(journeesBrutes);
+  const premiereJournee = journeesTriees[0];
 
   const check = await offrePeutEtreModifiee(supabase, offreId, user.id);
   if (!check.ok) return { success: false, error: check.error };
@@ -406,14 +502,29 @@ export async function modifierOffre(offreId: string, input: ModifierOffreInput):
       titre: input.titre.trim(),
       description: input.description.trim(),
       ville: input.ville.trim(),
-      date_mission: input.dateMission,
-      heure_debut: input.heureDebut,
-      heure_fin: input.heureFin,
+      date_mission: premiereJournee.date,
+      heure_debut: premiereJournee.heureDebut,
+      heure_fin: premiereJournee.heureFin,
       tarif_horaire: input.tarifHoraire,
     })
     .eq("id", offreId);
   if (error) {
     return { success: false, error: traduireErreurDb(error, "Impossible de modifier cette offre pour le moment.") };
+  }
+
+  // Remplace entièrement les journées existantes par le nouveau jeu —
+  // pas de diff ligne à ligne (hors périmètre Phase 2A), les policies
+  // RLS offres_journees_delete_proprietaire_ou_admin/insert_proprietaire
+  // (migration 0062) autorisent déjà le propriétaire à faire les deux.
+  const { error: deleteError } = await supabase.from("offres_journees").delete().eq("offre_id", offreId);
+  if (deleteError) {
+    return { success: false, error: traduireErreurDb(deleteError, "Impossible de mettre à jour les journées de cette offre.") };
+  }
+  const { error: journeesError } = await supabase
+    .from("offres_journees")
+    .insert(journeesTriees.map((j) => ({ offre_id: offreId, date: j.date, heure_debut: j.heureDebut, heure_fin: j.heureFin })));
+  if (journeesError) {
+    return { success: false, error: traduireErreurDb(journeesError, "Impossible de mettre à jour les journées de cette offre.") };
   }
 
   revalidatePath("/client/candidatures");

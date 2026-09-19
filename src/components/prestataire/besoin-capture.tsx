@@ -25,19 +25,20 @@ import {
   type ContrainteDetectee,
   type Ambiguite,
 } from "@/lib/besoin";
+import { type JourneeMission, validerJournees, trierJourneesParDate, premiereDateJournees } from "@/lib/journees";
+import { EditeurJournees } from "@/components/journees/editeur-journees";
 import { cn } from "@/lib/utils";
 
 type Chip = {
   metier: MetierId;
   quantite: number;
   manuel: boolean;
-  // Chaque carte porte ses propres date/horaires/lieu quand le texte
-  // les précise séparément pour ce métier — null tant que non
-  // détectés/édités, l'affichage retombe alors sur la valeur globale
-  // de la demande (jamais sur une valeur inventée).
-  date: string | null;
-  heureDebut: string | null;
-  heureFin: string | null;
+  // Mission multi-jours (migration 0062) — null : ce métier hérite de
+  // `journeesCommunes` (voir journeesResolues plus bas) ; un tableau :
+  // override complet propre à ce métier (généralise l'ancien override
+  // "date propre à ce métier" à date+horaires ensemble). Jamais imposé
+  // aux autres métiers, jamais une valeur inventée.
+  journees: JourneeMission[] | null;
   moment: MomentJournee | null;
   ville: string | null;
   // Jamais extrait du texte — le tarif n'est fiable que saisi par le
@@ -47,7 +48,6 @@ type Chip = {
   contraintes: ContrainteDetectee[];
   ambiguites: Ambiguite[];
   quantiteIncertaine: boolean;
-  datesMultiples: string[] | null;
 };
 
 type Onglet = "commun" | MetierId;
@@ -73,18 +73,45 @@ function formatDateFr(iso: string): string {
   });
 }
 
-/** Composants locaux (jamais toISOString — voir lib/besoin.ts) : la seule vraie date "aujourd'hui" utilisée pour "Dès que possible". */
-function aujourdhuiIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/**
+ * Reconstruit une liste de journées à partir d'un ancien brouillon
+ * mono-date (`date`/`heureDebut`/`heureFin` scalaires, éventuellement
+ * absents) — utilisé UNIQUEMENT en repli quand `journees` n'existe pas
+ * ou est vide (compatibilité ascendante, lib/besoin.ts::BesoinEnCours/
+ * SousBesoinEnCours). Jamais utilisé quand `journees` est déjà présent.
+ */
+function journeesDepuisChampsScalaires(date: string | null | undefined, heureDebut: string | null | undefined, heureFin: string | null | undefined): JourneeMission[] {
+  return [{ date: date ?? "", heureDebut: heureDebut ?? "", heureFin: heureFin ?? "" }];
+}
+
+/**
+ * Transforme la sortie NLP (une date/heure "de segment" + les dates
+ * additionnelles de `detecterDatesMultiples`, lib/besoin.ts) en
+ * override de journées pour un chip — "lundi, mercredi et vendredi de
+ * 9h à 17h" devient 3 journées, chacune avec les mêmes horaires
+ * (extraits une seule fois par segment, jamais recalculés par jour).
+ * Retourne `null` (hérite de journeesCommunes) quand RIEN n'a été
+ * détecté pour ce métier — jamais une journée vide inventée.
+ */
+function construireJourneesDetectees(d: {
+  date: string | null;
+  heureDebut: string | null;
+  heureFin: string | null;
+  datesMultiples?: string[] | null;
+}): JourneeMission[] | null {
+  if (!d.date && !d.heureDebut && !d.heureFin) return null;
+  const heureDebut = d.heureDebut ?? "";
+  const heureFin = d.heureFin ?? "";
+  if (d.datesMultiples && d.datesMultiples.length > 1) {
+    return d.datesMultiples.map((date) => ({ date, heureDebut, heureFin }));
+  }
+  return [{ date: d.date ?? "", heureDebut, heureFin }];
 }
 
 function creerChip(d: {
   metier: MetierId;
   quantite: number;
-  heureDebut: string | null;
-  heureFin: string | null;
-  date?: string | null;
+  journees: JourneeMission[] | null;
   moment?: MomentJournee | null;
   ville?: string | null;
   tarifHoraire?: number | null;
@@ -92,21 +119,17 @@ function creerChip(d: {
   contraintes?: ContrainteDetectee[];
   ambiguites?: Ambiguite[];
   quantiteIncertaine?: boolean;
-  datesMultiples?: string[] | null;
 }): Chip {
   return {
     metier: d.metier,
     quantite: d.quantite,
     manuel: false,
-    date: d.date ?? null,
-    heureDebut: d.heureDebut,
-    heureFin: d.heureFin,
+    journees: d.journees,
     moment: d.moment ?? null,
     ville: d.ville ?? null,
     tarifHoraire: d.tarifHoraire ?? null,
     contexte: d.contexte ?? null,
     contraintes: d.contraintes ?? [],
-    datesMultiples: d.datesMultiples ?? null,
     // Un brouillon repris après connexion (chipsDepuis*) ne porte
     // jamais de confirmation en attente — voir SousBesoinEnCours,
     // lib/besoin.ts : ambiguites/quantiteIncertaine n'y sont pas
@@ -124,9 +147,10 @@ function chipsDepuisDemandeSauvee(): Chip[] | null {
     creerChip({
       metier: sb.metier,
       quantite: sb.quantite,
-      heureDebut: sb.heureDebut,
-      heureFin: sb.heureFin,
-      date: sb.date || null,
+      // Compatibilité ascendante (§6/§10) : `journees` prioritaire s'il
+      // existe et n'est pas vide, sinon reconstruction depuis les
+      // anciens champs scalaires — jamais une erreur sur un vieux brouillon.
+      journees: sb.journees && sb.journees.length > 0 ? sb.journees : journeesDepuisChampsScalaires(sb.date, sb.heureDebut, sb.heureFin),
       ville: sb.ville,
       tarifHoraire: sb.tarifHoraire,
       // Brouillon antérieur au Lot B : ces clés sont absentes, jamais inventées ici (?? null / ?? []).
@@ -144,9 +168,7 @@ function chipsDepuisBesoinSauve(): Chip[] | null {
     creerChip({
       metier: besoin.metier,
       quantite: besoin.quantite ?? 1,
-      heureDebut: besoin.heureDebut,
-      heureFin: besoin.heureFin,
-      date: besoin.date,
+      journees: besoin.journees && besoin.journees.length > 0 ? besoin.journees : journeesDepuisChampsScalaires(besoin.date, besoin.heureDebut, besoin.heureFin),
       ville: besoin.ville,
       tarifHoraire: besoin.tarifHoraire ?? null,
       contexte: besoin.contexte ?? null,
@@ -190,16 +212,26 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
     if (chipsSauveesInitiales) return chipsSauveesInitiales;
     if (texteInitial) {
       const decomposition = extraireSousBesoins(texteInitial);
-      if (decomposition.length > 0) return decomposition.map((d) => creerChip(d));
+      if (decomposition.length > 0)
+        return decomposition.map((d) =>
+          creerChip({
+            metier: d.metier,
+            quantite: d.quantite,
+            journees: construireJourneesDetectees(d),
+            moment: d.moment,
+            contexte: d.contexte,
+            contraintes: d.contraintes,
+            ambiguites: d.ambiguites,
+            quantiteIncertaine: d.quantiteIncertaine,
+          }),
+        );
       const extrait = extraireBesoin(texteInitial);
       return extrait.metier
         ? [
             creerChip({
               metier: extrait.metier,
               quantite: extrait.quantite ?? 1,
-              heureDebut: extrait.heureDebut,
-              heureFin: extrait.heureFin,
-              date: extrait.date,
+              journees: construireJourneesDetectees(extrait),
               moment: extrait.moment,
               contexte: extrait.contexte,
               contraintes: extrait.contraintes,
@@ -234,9 +266,19 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   // n'a pas été validée ou corrigée. Jamais persistée (voir creerChip) :
   // une reprise de brouillon repart sans confirmation en attente.
   const [ambiguiteVille, setAmbiguiteVille] = useState<{ ville: string } | null>(null);
-  const [date, setDate] = useState<string | null>(demandeSauvee?.date || chips[0]?.date || null);
-  const [heureDebut, setHeureDebut] = useState<string | null>(demandeSauvee?.heureDebut || null);
-  const [heureFin, setHeureFin] = useState<string | null>(demandeSauvee?.heureFin || null);
+  // Mission multi-jours (migration 0062) — journées PAR DÉFAUT de la
+  // demande, utilisées par tout métier dont `journees` est null (voir
+  // Chip.journees). Compatibilité ascendante (§6/§10) : `journees` du
+  // brouillon prioritaire, sinon reconstruction depuis les anciens
+  // champs scalaires date/heureDebut/heureFin, sinon (cas mono-métier
+  // repris via chipsDepuisBesoinSauve, sans DemandeEnCours propre) les
+  // journées déjà résolues du chip unique, sinon une journée vide.
+  const [journeesCommunes, setJourneesCommunes] = useState<JourneeMission[]>(() => {
+    if (demandeSauvee?.journees && demandeSauvee.journees.length > 0) return demandeSauvee.journees;
+    if (demandeSauvee) return journeesDepuisChampsScalaires(demandeSauvee.date, demandeSauvee.heureDebut, demandeSauvee.heureFin);
+    if (chips[0]?.journees && chips[0].journees.length > 0) return chips[0].journees;
+    return [{ date: "", heureDebut: "", heureFin: "" }];
+  });
   const [adresseTexte, setAdresseTexte] = useState<string | null>(null);
   // "?? lireBesoin()?.titre" comble le cas mono-métier (demandeSauvee
   // vient de lireDemande(), toujours null hors du cas multi).
@@ -254,7 +296,13 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   const modeMulti = chips.length >= 2;
   const chipUnique = chips.length === 1 ? chips[0] : null;
   const ongletActif: Onglet = modeMulti ? onglet : (chips[0]?.metier ?? "commun");
-  const dateApercu = date ?? chips.find((c) => c.date)?.date ?? null;
+  // Journées effectivement utilisées par ce métier — override propre
+  // s'il existe, sinon repli sur les journées communes de la demande
+  // (architecture validée : jamais un troisième concept multi-jours).
+  function journeesResolues(c: Chip): JourneeMission[] {
+    return c.journees ?? journeesCommunes;
+  }
+  const dateApercu = premiereDateJournees(journeesCommunes) ?? (chipUnique ? premiereDateJournees(journeesResolues(chipUnique)) : null);
   const titreParDefaut = dateApercu ? `Événement du ${formatDateFr(dateApercu)}` : "Ma demande";
 
   // "Prête pour la publication" exige une vraie date (offres.date_mission
@@ -264,18 +312,13 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   // offre publiée sans rémunération fait candidater les professionnels
   // à l'aveugle).
   function champsResolus(c: Chip) {
-    return {
-      date: c.date ?? date,
-      heureDebut: c.heureDebut ?? heureDebut,
-      heureFin: c.heureFin ?? heureFin,
-      ville: c.ville ?? ville,
-    };
+    return { ville: c.ville ?? ville };
   }
   function carteResoluePourPublication(c: Chip): boolean {
     const r = champsResolus(c);
-    return Boolean(r.date && r.heureDebut && r.heureFin && r.ville && c.tarifHoraire && c.tarifHoraire > 0);
+    return Boolean(validerJournees(journeesResolues(c)) === null && r.ville && c.tarifHoraire && c.tarifHoraire > 0);
   }
-  const communComplet = titre.trim().length > 0 && Boolean(date) && Boolean(ville);
+  const communComplet = titre.trim().length > 0 && validerJournees(journeesCommunes) === null && Boolean(ville);
   const pretPourPublication = chips.length > 0 && chips.every(carteResoluePourPublication);
   // Toute carte à laquelle il manque quoi que ce soit (lieu/horaire —
   // bloquants pour tout — ou date/tarif — bloquants seulement pour
@@ -289,13 +332,14 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   // métier, qui bascule directement sur l'onglet concerné.
   const manques: { label: string; scope: string; onglet: Onglet }[] = [];
   if (!titre.trim()) manques.push({ label: "Titre de l'offre", scope: "commun", onglet: "commun" });
-  if (!date) manques.push({ label: "Date de l'offre", scope: "commun", onglet: "commun" });
+  const erreurJourneesCommunes = validerJournees(journeesCommunes);
+  if (erreurJourneesCommunes) manques.push({ label: erreurJourneesCommunes, scope: "commun", onglet: "commun" });
   if (!ville) manques.push({ label: "Adresse exacte", scope: "commun", onglet: "commun" });
   for (const c of chips) {
     const info = infosFamille(c.metier);
     const court = METIERS.find((m) => m.id === c.metier)?.filiere.split(" ")[0].replace("&", "").trim() || info.filiere;
-    const r = champsResolus(c);
-    if (!(r.heureDebut && r.heureFin)) manques.push({ label: "Horaires du poste", scope: court, onglet: c.metier });
+    const erreurJourneesChip = validerJournees(journeesResolues(c));
+    if (erreurJourneesChip) manques.push({ label: erreurJourneesChip, scope: court, onglet: c.metier });
     if (!(c.tarifHoraire && c.tarifHoraire > 0)) manques.push({ label: "Rémunération", scope: court, onglet: c.metier });
   }
 
@@ -316,6 +360,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       heureDebut: string | null;
       heureFin: string | null;
       date: string | null;
+      datesMultiples?: string[] | null;
       moment: MomentJournee | null;
       contexte: ContexteDetecte | null;
       contraintes: ContrainteDetectee[];
@@ -347,14 +392,36 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       // l'utilisateur n'a pas explicitement retiré, devient une
       // nouvelle carte — les valeurs des cartes existantes ne sont
       // jamais réécrasées par la frappe, seule une action explicite
-      // (bouton, édition) les modifie.
-      const nouveaux = detectes.filter((d) => !idsPresents.has(d.metier) && !supprimes.has(d.metier)).map((d) => creerChip(d));
+      // (bouton, édition) les modifie. `datesMultiples` ("lundi,
+      // mercredi et vendredi de 9h à 17h") devient directement autant
+      // de journées avec les mêmes horaires — plus de message "seul le
+      // premier jour sera publié" (voir construireJourneesDetectees).
+      const nouveaux = detectes
+        .filter((d) => !idsPresents.has(d.metier) && !supprimes.has(d.metier))
+        .map((d) =>
+          creerChip({
+            metier: d.metier,
+            quantite: d.quantite,
+            journees: construireJourneesDetectees(d),
+            moment: d.moment,
+            contexte: d.contexte,
+            contraintes: d.contraintes,
+            ambiguites: d.ambiguites,
+            quantiteIncertaine: d.quantiteIncertaine,
+          }),
+        );
       return [...prev, ...nouveaux];
     });
 
-    setDate((prev) => prev ?? extrait.date);
-    setHeureDebut((prev) => prev ?? extrait.heureDebut);
-    setHeureFin((prev) => prev ?? extrait.heureFin);
+    // Journées communes — seulement préremplies tant qu'aucune saisie
+    // (manuelle ou déjà détectée) n'existe encore, jamais écrasées une
+    // fois renseignées (même garde que l'ancien setDate/setHeureDebut/
+    // setHeureFin "prev ?? ...").
+    setJourneesCommunes((prev) => {
+      const vierge = prev.length === 1 && !prev[0].date && !prev[0].heureDebut && !prev[0].heureFin;
+      if (!vierge) return prev;
+      return construireJourneesDetectees(extrait) ?? prev;
+    });
 
     const adresse = detecterAdresse(nouveauTexte);
     setAdresseTexte((prev) => (prev === null ? adresse?.texte ?? null : prev));
@@ -412,20 +479,31 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
   /**
    * Lot C — "Modifier" : on efface la proposition (jamais gardée "au
    * cas où") et le client retape via l'éditeur habituel de la carte.
+   * Mission multi-jours (migration 0062) — une ambiguïté de DATE porte
+   * toujours sur la PREMIÈRE journée : c'est elle l'ancrage dont
+   * dérivent les journées suivantes de `datesMultiples`
+   * (detecterDatesMultiples, lib/besoin.ts), jamais une journée
+   * quelconque du tableau. Une ambiguïté d'HORAIRES, elle, porte sur
+   * un horaire unique extrait une seule fois par segment et partagé
+   * par toutes les journées de ce métier — les effacer toutes pour
+   * re-saisie, jamais une seule (elles ne peuvent pas être
+   * individuellement "approximatives" indépendamment les unes des
+   * autres, puisqu'elles viennent de la même extraction).
    */
+  function effacerChampAmbigu(champ: Ambiguite["champ"], journees: JourneeMission[]): JourneeMission[] {
+    return champ === "date"
+      ? journees.map((j, i) => (i === 0 ? { ...j, date: "" } : j))
+      : journees.map((j) => ({ ...j, heureDebut: "", heureFin: "" }));
+  }
   function modifierAmbiguite(metier: MetierId, champ: Ambiguite["champ"]) {
     setChips((prev) =>
       prev.map((c) => {
         if (c.metier !== metier) return c;
-        const patch: Partial<Chip> = champ === "date" ? { date: null } : { heureDebut: null, heureFin: null };
-        return { ...c, ...patch, ambiguites: c.ambiguites.filter((a) => a.champ !== champ) };
+        const base = c.journees ?? journeesCommunes;
+        return { ...c, journees: effacerChampAmbigu(champ, base), ambiguites: c.ambiguites.filter((a) => a.champ !== champ) };
       }),
     );
-    if (champ === "date") setDate(null);
-    else {
-      setHeureDebut(null);
-      setHeureFin(null);
-    }
+    setJourneesCommunes((prev) => effacerChampAmbigu(champ, prev));
   }
   /** Lot C §4 — "Combien de personnes souhaitez-vous ?" : la quantité affichée (repli 1) reste, seul le rappel disparaît ; ajusterQuantite() fait déjà de même dès que le client touche +/-. */
   function confirmerQuantite(metier: MetierId) {
@@ -434,9 +512,12 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
 
   function ajouterChip(metier: MetierId) {
     setChips((prev) =>
+      // Rien de détecté pour ce nouveau métier : hérite des journées
+      // communes (journees: null) plutôt qu'une journée vide — voir
+      // l'architecture validée, "A) utiliser les journées communes".
       prev.some((c) => c.metier === metier)
         ? prev
-        : [...prev, creerChip({ metier, quantite: 1, heureDebut: null, heureFin: null })].map((c) =>
+        : [...prev, creerChip({ metier, quantite: 1, journees: null })].map((c) =>
             c.metier === metier ? { ...c, manuel: true } : c,
           ),
     );
@@ -489,24 +570,35 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
 
   function sauvegarderPourReprise() {
     const titreFinal = (titre || titreParDefaut).trim();
+    // Mission multi-jours (migration 0062) — le tableau complet est
+    // TOUJOURS persisté (jamais seulement la première date, §7), trié
+    // chronologiquement. Les anciens champs scalaires sont conservés en
+    // parallèle (= première journée) uniquement pour qu'un retour à une
+    // version antérieure du code garde un brouillon exploitable.
     if (modeMulti) {
+      const journeesCommunesTriees = trierJourneesParDate(journeesCommunes);
+      const premiereCommune = journeesCommunesTriees[0];
       sauvegarderDemande({
         titre: titreFinal,
         texteOriginal: texte,
         ville: ville ?? "",
-        date: date ?? "",
-        heureDebut: heureDebut ?? "",
-        heureFin: heureFin ?? "",
+        date: premiereCommune?.date ?? "",
+        heureDebut: premiereCommune?.heureDebut ?? "",
+        heureFin: premiereCommune?.heureFin ?? "",
+        journees: journeesCommunesTriees,
         sousBesoins: chips.map((c) => {
           const r = champsResolus(c);
+          const journeesChip = trierJourneesParDate(journeesResolues(c));
+          const premiereJournee = journeesChip[0];
           return {
             metier: c.metier,
             quantite: c.quantite,
             tarifHoraire: c.tarifHoraire,
             ville: r.ville ?? "",
-            date: r.date ?? "",
-            heureDebut: r.heureDebut ?? "",
-            heureFin: r.heureFin ?? "",
+            date: premiereJournee?.date ?? "",
+            heureDebut: premiereJournee?.heureDebut ?? "",
+            heureFin: premiereJournee?.heureFin ?? "",
+            journees: journeesChip,
             contexte: c.contexte,
             contraintes: c.contraintes,
           };
@@ -514,14 +606,17 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       });
     } else if (chipUnique) {
       const r = champsResolus(chipUnique);
+      const journeesChip = trierJourneesParDate(journeesResolues(chipUnique));
+      const premiereJournee = journeesChip[0];
       sauvegarderBesoin({
         texte,
         metier: chipUnique.metier,
         ville: r.ville,
         quantite: chipUnique.quantite,
-        date: r.date,
-        heureDebut: r.heureDebut,
-        heureFin: r.heureFin,
+        date: premiereJournee?.date ?? null,
+        heureDebut: premiereJournee?.heureDebut ?? null,
+        heureFin: premiereJournee?.heureFin ?? null,
+        journees: journeesChip,
         tarifHoraire: chipUnique.tarifHoraire,
         titre: titre.trim() || undefined,
         contexte: chipUnique.contexte,
@@ -540,8 +635,8 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
     if (etape !== "details" || chips.length === 0) return;
     const id = setTimeout(() => sauvegarderPourReprise(), 600);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sauvegarderPourReprise lit déjà tout l'état pertinent (chips, titre, date, ville...) via fermeture ; le lister en plus de ces dépendances redéclencherait l'effet en boucle sans rien y ajouter.
-  }, [etape, chips, titre, date, ville, heureDebut, heureFin, texte, prerequis, messagePersonnalise]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sauvegarderPourReprise lit déjà tout l'état pertinent (chips, titre, journeesCommunes, ville...) via fermeture ; le lister en plus de ces dépendances redéclencherait l'effet en boucle sans rien y ajouter.
+  }, [etape, chips, titre, journeesCommunes, ville, texte, prerequis, messagePersonnalise]);
 
   /** Bouton "Enregistrer le brouillon" — même sauvegarde que celle déjà
    * déclenchée silencieusement avant un renvoi vers /connexion, mais ici
@@ -594,14 +689,22 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
         texteOriginal: descriptionFinale,
         sousBesoins: chips.map((c) => {
           const r = champsResolus(c);
+          // journeesResolues(c) — override propre au métier, ou repli
+          // sur journeesCommunes (architecture validée). Triées avant
+          // envoi ; dateMission/heureDebut/heureFin (première journée)
+          // restent transmis pour compatibilité, mais `journees` prime
+          // côté serveur (publierDemandeGlobale, §9).
+          const journees = trierJourneesParDate(journeesResolues(c));
+          const premiereJournee = journees[0];
           return {
             metier: c.metier,
             quantite: c.quantite,
             tarifHoraire: c.tarifHoraire!,
             ville: r.ville!,
-            dateMission: r.date!,
-            heureDebut: r.heureDebut!,
-            heureFin: r.heureFin!,
+            dateMission: premiereJournee.date,
+            heureDebut: premiereJournee.heureDebut,
+            heureFin: premiereJournee.heureFin,
+            journees,
             // Chaque offre reçoit UNIQUEMENT le contexte/les contraintes
             // de SON métier — jamais ceux des métiers voisins (§4/§8).
             contexte: c.contexte,
@@ -617,6 +720,8 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
       toast.success(`Demande publiée — ${chips.length} besoins envoyés indépendamment.`);
     } else if (chipUnique) {
       const r = champsResolus(chipUnique);
+      const journees = trierJourneesParDate(journeesResolues(chipUnique));
+      const premiereJournee = journees[0];
       // Mono-métier : un seul chip, aucune ambiguïté d'attribution —
       // le bloc contexte/contraintes peut rejoindre la description déjà composée.
       const descriptionAvecContraintes = [descriptionFinale, blocContexteContraintes(chipUnique)].filter(Boolean).join("\n\n");
@@ -625,10 +730,11 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
         description: descriptionAvecContraintes,
         metier: chipUnique.metier,
         ville: r.ville!,
-        dateMission: r.date!,
-        heureDebut: r.heureDebut!,
-        heureFin: r.heureFin!,
+        dateMission: premiereJournee.date,
+        heureDebut: premiereJournee.heureDebut,
+        heureFin: premiereJournee.heureFin,
         tarifHoraire: chipUnique.tarifHoraire!,
+        journees,
       });
       setEnvoiPublication(false);
       if (!result.success) {
@@ -801,30 +907,30 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                     </span>
                   </div>
                   <div className="grid gap-4">
-                    <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
-                      <ChampCommun label="Date de l'offre" manquant={!date}>
-                        <EditeurDate value={date} onChange={setDate} onValider={() => {}} nomGroupe="date-commune" compact />
+                    <div>
+                      <ChampCommun label="Journées de l'offre" manquant={validerJournees(journeesCommunes) !== null}>
+                        <EditeurJournees journees={journeesCommunes} onChange={setJourneesCommunes} />
                       </ChampCommun>
-                      <div>
-                        <ChampCommun label="Adresse exacte" manquant={!ville}>
-                          <VilleAutocompleteIdf value={ville ?? ""} onChange={setVille} className={cn(!ville && "[&_input]:border-primary [&_input]:border-[1.5px]")} />
-                        </ChampCommun>
-                        {ambiguiteVille && (
-                          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-ppj-fill px-3 py-2.5 text-[12.5px] text-ppj-ink">
-                            <MapPin className="size-3.5 shrink-0 text-primary" />
-                            <span>
-                              Nous pensons que c&apos;est à <strong className="font-semibold">{ambiguiteVille.ville}</strong>.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setAmbiguiteVille(null)}
-                              className="font-semibold text-primary underline underline-offset-2"
-                            >
-                              Confirmer
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                    </div>
+                    <div>
+                      <ChampCommun label="Adresse exacte" manquant={!ville}>
+                        <VilleAutocompleteIdf value={ville ?? ""} onChange={setVille} className={cn(!ville && "[&_input]:border-primary [&_input]:border-[1.5px]")} />
+                      </ChampCommun>
+                      {ambiguiteVille && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[12px] bg-ppj-fill px-3 py-2.5 text-[12.5px] text-ppj-ink">
+                          <MapPin className="size-3.5 shrink-0 text-primary" />
+                          <span>
+                            Nous pensons que c&apos;est à <strong className="font-semibold">{ambiguiteVille.ville}</strong>.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setAmbiguiteVille(null)}
+                            className="font-semibold text-primary underline underline-offset-2"
+                          >
+                            Confirmer
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <ChampCommun label="Titre de l'offre" manquant={!titre.trim()}>
                       <input
@@ -886,6 +992,7 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                   <PanneauMetier
                     key={chip.metier}
                     chip={chip}
+                    journeesCommunes={journeesCommunes}
                     onRetirer={() => retirerChip(chip.metier)}
                     onAjusterQuantite={(delta) => ajusterQuantite(chip.metier, delta)}
                     onModifier={(patch) => mettreAJourChip(chip.metier, patch)}
@@ -920,7 +1027,14 @@ export function BesoinCapture({ texteInitial }: { texteInitial?: string }) {
                 <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-[#98938B]">Votre offre</span>
                 <div className="mt-3 grid gap-[9px] text-[13.5px]">
                   <span className="flex items-center justify-between gap-3">
-                    <span className="text-[#6B6660]">{date ? formatDateFr(date) : "Date à préciser"}</span>
+                    <span className="text-[#6B6660]">
+                      {(() => {
+                        const premiere = premiereDateJournees(journeesCommunes);
+                        const nbJournees = journeesCommunes.filter((j) => j.date).length;
+                        if (!premiere) return "Date à préciser";
+                        return nbJournees > 1 ? `${formatDateFr(premiere)} (+${nbJournees - 1})` : formatDateFr(premiere);
+                      })()}
+                    </span>
                     <span className="text-ppj-ink">{ville ?? "Adresse à préciser"}</span>
                   </span>
                   <span className="block h-px bg-[#EFEBE6]" />
@@ -1135,122 +1249,20 @@ function BadgeManquant({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Choix de date à 3 options mutuellement exclusives — jamais un simple
- * calendrier vide. "Dès que possible" résout tout de suite une vraie
- * date (aujourd'hui, la plus proche possible) ; "Je ne sais pas encore"
- * est le repli explicite quand rien n'est décidé.
- */
-function EditeurDate({
-  value,
-  onChange,
-  onValider,
-  nomGroupe,
-  compact,
-  initialementOuvert,
-}: {
-  value: string | null;
-  onChange: (d: string | null) => void;
-  onValider: () => void;
-  nomGroupe: string;
-  compact?: boolean;
-  /** "Date propre à ce métier" gère déjà elle-même son repli/ouverture (bouton + rendu conditionnel) — force l'ouverture ici pour ne pas imbriquer deux replis. */
-  initialementOuvert?: boolean;
-}) {
-  const aujourdhui = aujourdhuiIso();
-  const [choix, setChoix] = useState<"asap" | "precise" | "inconnue">(
-    value === null ? "inconnue" : value === aujourdhui ? "asap" : "precise",
-  );
-  // Repliée dès qu'un choix a été fait (README design "Publier une
-  // offre" simplifié) — une seule ligne "valeur + Modifier", jamais
-  // les 3 options en permanence une fois la décision prise. Ouverte
-  // d'emblée seulement quand rien n'a encore été choisi.
-  const [ouvert, setOuvert] = useState(initialementOuvert ?? value === null);
-
-  if (!ouvert) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOuvert(true)}
-        className="flex w-full items-center justify-between gap-2 rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-[14px] py-[15px] text-left text-[16px] text-ppj-ink"
-      >
-        <span>{value ? formatDateFr(value) : "À définir plus tard"}</span>
-        <span className="shrink-0 text-[12.5px] font-semibold text-primary">Modifier</span>
-      </button>
-    );
-  }
-
-  function optionClass(actif: boolean) {
-    return cn(
-      "flex cursor-pointer items-center gap-2 rounded-[10px] border px-3 py-2 text-left text-sm transition-colors",
-      actif ? "border-primary bg-ppj-red-bg text-ppj-ink" : "border-ppj-line text-ppj-text-3 hover:border-primary/40",
-    );
-  }
-
-  return (
-    <div className={cn("flex w-full flex-col gap-1.5", compact ? "max-w-full" : "mt-2.5 max-w-xs")}>
-      <label className={optionClass(choix === "asap")}>
-        <input
-          type="radio"
-          name={nomGroupe}
-          checked={choix === "asap"}
-          onChange={() => {
-            setChoix("asap");
-            onChange(aujourdhui);
-            onValider();
-            setOuvert(false);
-          }}
-        />
-        Dès que possible
-      </label>
-      <label className={optionClass(choix === "precise")}>
-        <input type="radio" name={nomGroupe} checked={choix === "precise"} onChange={() => setChoix("precise")} />
-        À une date précise
-      </label>
-      {choix === "precise" && (
-        <input
-          type="date"
-          autoFocus
-          value={value && value !== aujourdhui ? value : ""}
-          onChange={(e) => {
-            if (e.target.value) {
-              onChange(e.target.value);
-              onValider();
-              setOuvert(false);
-            }
-          }}
-          className="ml-6 rounded-[14px] border border-ppj-line-field bg-ppj-field px-3 py-2 text-sm text-ppj-ink"
-        />
-      )}
-      <label className={optionClass(choix === "inconnue")}>
-        <input
-          type="radio"
-          name={nomGroupe}
-          checked={choix === "inconnue"}
-          onChange={() => {
-            setChoix("inconnue");
-            onChange(null);
-            onValider();
-            setOuvert(false);
-          }}
-        />
-        Je ne sais pas encore
-      </label>
-    </div>
-  );
-}
-
-/**
  * Contenu de l'onglet d'un métier — reprend telle quelle la logique
  * de CarteEquipe (Lots A-F), mais sans son propre bloc date/heure/lieu
- * empilé : ces trois champs vivent maintenant dans l'onglet "Commun"
- * (partagés) sauf horaires, qui restent propres à CE métier (jamais
- * globaux, README §11) et s'affichent donc ici, toujours visibles.
+ * empilé : l'adresse/le titre/le contexte vivent dans l'onglet
+ * "Commun" (partagés) ; les journées (date+horaires, migration 0062)
+ * héritent des journées communes par défaut mais peuvent devenir
+ * propres à ce métier (jamais globaux, README §11) et s'affichent
+ * donc ici, toujours visibles.
  * Nouveau : Rémunération (tarif horaire), obligatoire, absente du
  * parcours "Proposer la mission" — c'est le professionnel qui y
  * renvoie son propre devis, alors qu'ici personne n'a encore répondu.
  */
 function PanneauMetier({
   chip,
+  journeesCommunes,
   onRetirer,
   onAjusterQuantite,
   onModifier,
@@ -1260,6 +1272,7 @@ function PanneauMetier({
   onConfirmerQuantite,
 }: {
   chip: Chip;
+  journeesCommunes: JourneeMission[];
   onRetirer: () => void;
   onAjusterQuantite: (delta: number) => void;
   onModifier: (patch: Partial<Chip>) => void;
@@ -1268,7 +1281,6 @@ function PanneauMetier({
   onModifierAmbiguite: (champ: Ambiguite["champ"]) => void;
   onConfirmerQuantite: () => void;
 }) {
-  const [editionDate, setEditionDate] = useState(false);
   const info = infosFamille(chip.metier);
 
   return (
@@ -1333,70 +1345,72 @@ function PanneauMetier({
       )}
 
       <div className="mt-4 grid gap-4 border-t border-ppj-line-2 pt-4">
-        <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-[1fr_1fr_1.3fr]">
-          <ChampCommun label="Début" manquant={!chip.heureDebut}>
+        <ChampCommun label="Rémunération proposée" manquant={!(chip.tarifHoraire && chip.tarifHoraire > 0)}>
+          <span className="flex max-w-[220px] items-center gap-1.5">
             <input
-              type="time"
-              value={chip.heureDebut ?? ""}
-              onChange={(e) => onModifier({ heureDebut: e.target.value || null })}
-              className={champClass(!chip.heureDebut)}
+              type="number"
+              min={0}
+              step="0.5"
+              value={chip.tarifHoraire ?? ""}
+              onChange={(e) => onModifier({ tarifHoraire: Number(e.target.value) || null })}
+              placeholder="Ex. 15"
+              aria-label={`Tarif horaire pour ${info.filiere}`}
+              className={champClass(!(chip.tarifHoraire && chip.tarifHoraire > 0))}
             />
-          </ChampCommun>
-          <ChampCommun label="Fin" manquant={!chip.heureFin}>
-            <input
-              type="time"
-              value={chip.heureFin ?? ""}
-              onChange={(e) => onModifier({ heureFin: e.target.value || null })}
-              className={champClass(!chip.heureFin)}
-            />
-          </ChampCommun>
-          <ChampCommun label="Rémunération proposée" manquant={!(chip.tarifHoraire && chip.tarifHoraire > 0)}>
-            <span className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                step="0.5"
-                value={chip.tarifHoraire ?? ""}
-                onChange={(e) => onModifier({ tarifHoraire: Number(e.target.value) || null })}
-                placeholder="Ex. 15"
-                aria-label={`Tarif horaire pour ${info.filiere}`}
-                className={champClass(!(chip.tarifHoraire && chip.tarifHoraire > 0))}
-              />
-              <span className="shrink-0 text-[13.5px] text-[#6B6660]">€/h</span>
-            </span>
-          </ChampCommun>
-        </div>
-        {chip.moment && !chip.heureDebut && (
-          <p className="-mt-2 text-[12px] text-ppj-text-3">{LABEL_MOMENT[chip.moment]} — horaires à préciser</p>
-        )}
+            <span className="shrink-0 text-[13.5px] text-[#6B6660]">€/h</span>
+          </span>
+        </ChampCommun>
 
-        {chip.date && (
-          <ChampCommun label="Date propre à ce métier" hint="différente de la date commune">
-            <button
-              type="button"
-              onClick={() => setEditionDate((v) => !v)}
-              className="rounded-[12px] border border-[#E6E2DC] bg-[#FCFBF9] px-3.5 py-3 text-left text-[14px] text-ppj-ink"
-            >
-              {formatDateFr(chip.date)}
-            </button>
-            {editionDate && (
-              <EditeurDate
-                value={chip.date}
-                onChange={(d) => onModifier({ date: d })}
-                onValider={() => setEditionDate(false)}
-                nomGroupe={`date-${chip.metier}`}
-                compact
-                initialementOuvert
-              />
+        {/*
+          Mission multi-jours (migration 0062) — un métier hérite des
+          journées communes par défaut (journees: null) ou porte son
+          propre jeu, généralisation de l'ancien override "Date propre
+          à ce métier". Passer à un override copie les journées
+          communes ACTUELLES (jamais une journée vide) — voir
+          l'architecture validée.
+        */}
+        <div>
+          <span
+            className={cn(
+              "mb-[7px] flex items-center gap-[7px] text-[13px] font-semibold",
+              chip.journees !== null && validerJournees(chip.journees) ? "text-[#8E2A26]" : "text-ppj-ink",
             )}
-          </ChampCommun>
-        )}
-
-        {chip.datesMultiples && chip.datesMultiples.length > 1 && (
-          <p className="text-[12px] text-ppj-text-3">
-            Plusieurs jours mentionnés : {chip.datesMultiples.map((d) => formatDateFr(d)).join(", ")}. Une offre sera
-            publiée pour le premier ; les autres jours restent à publier séparément si besoin.
-          </p>
+          >
+            Journées de ce poste
+            {chip.journees !== null && validerJournees(chip.journees) && <BadgeManquant>requis</BadgeManquant>}
+          </span>
+          {chip.journees === null ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[12.5px] text-[#7A756D]">Utilise les journées communes de l&apos;offre.</p>
+              <button
+                type="button"
+                onClick={() => onModifier({ journees: journeesCommunes.map((j) => ({ ...j })) })}
+                className="rounded-full border border-ppj-line bg-ppj-fill px-2.5 py-[5px] text-[12px] text-ppj-neutral-text hover:border-ppj-ink"
+              >
+                Journées propres à ce poste
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <EditeurJournees journees={chip.journees} onChange={(journees) => onModifier({ journees })} />
+              {/* Plusieurs journées détectées depuis le texte libre
+                  ("lundi, mercredi et vendredi de 9h à 17h") : confirmation
+                  positive — jamais "un seul jour sera publié". */}
+              {chip.journees.length > 1 && (
+                <p className="text-[12px] text-ppj-text-3">{chip.journees.length} journées détectées et ajoutées.</p>
+              )}
+              <button
+                type="button"
+                onClick={() => onModifier({ journees: null })}
+                className="justify-self-start rounded-full border border-ppj-line bg-ppj-fill px-2.5 py-[5px] text-[12px] text-ppj-neutral-text hover:border-ppj-ink"
+              >
+                Revenir aux journées communes
+              </button>
+            </div>
+          )}
+        </div>
+        {chip.moment && chip.journees === null && !journeesCommunes[0]?.heureDebut && (
+          <p className="-mt-2 text-[12px] text-ppj-text-3">{LABEL_MOMENT[chip.moment]} — horaires à préciser</p>
         )}
       </div>
 
